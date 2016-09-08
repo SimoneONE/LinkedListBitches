@@ -28,11 +28,3 @@ typedef struct Packet{
 	int readPos;
 	struct Packet *next;
 } Packet;
-
-static struct file_operations fops = {
-	.read = ll_read,
-	.write = ll_write,
-	.open = ll_open,
-	.release = ll_release,
-	.unlocked_ioctl = ll_ioctl
-};

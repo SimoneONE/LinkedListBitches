@@ -20,3 +20,19 @@
 #define LL_SET_MAX_SIZE				_IO(DHARMA_MAJOR, 5)
 #define LL_GET_PACK_SIZE			_IO(DHARMA_MAJOR, 6)
 #define LL_SET_PACK_SIZE			_IO(DHARMA_MAJOR, 7)
+
+/* Buffer to store data */
+typedef struct Packet{
+	char *buffer;
+	int bufferSize;
+	int readPos;
+	struct Packet *next;
+} Packet;
+
+static struct file_operations fops = {
+	.read = ll_read,
+	.write = ll_write,
+	.open = ll_open,
+	.release = ll_release,
+	.unlocked_ioctl = ll_ioctl
+};

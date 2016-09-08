@@ -21,6 +21,9 @@
 #define LL_GET_PACK_SIZE			_IO(DHARMA_MAJOR, 6)
 #define LL_SET_PACK_SIZE			_IO(DHARMA_MAJOR, 7)
 
+#define LL_PACKET_MODE 1
+#define LL_STREAM_MODE 0
+
 /* Buffer to store data */
 typedef struct Packet{
 	char *buffer;

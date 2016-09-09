@@ -91,11 +91,11 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
             break;
         case LL_GET_MAX_SIZE:
         	printk("Returning current buffer size for ll-device %d...\n", minor);
-		size = atomic_read(&(maxStreamSizes[minor]));
-            	res = copy_to_user((int *) arg, &size , sizeof(int));
-            	if(res != 0)
-				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
-		printk("Buffer size for ll-device %d read.\n", minor);
+			size = atomic_read(&(maxStreamSizes[minor]));
+					res = copy_to_user((int *) arg, &size , sizeof(int));
+					if(res != 0)
+					return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
+			printk("Buffer size for ll-device %d read.\n", minor);
         	break;
         case LL_SET_MAX_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
@@ -106,12 +106,12 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	
                 printk(KERN_INFO "Maximum buffer size set to: %d", size);
         	break;
-	case LL_GET_PACK_SIZE:
+		case LL_GET_PACK_SIZE:
         	printk("Returning current packet size for ll-device %d...\n", minor);
-		size = atomic_read(&(segmentSizes[minor]));
-            	res = copy_to_user((int *) arg, &size , sizeof(int));
-            	if(res != 0)
-			return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
+			size = atomic_read(&(segmentSizes[minor]));
+			res = copy_to_user((int *) arg, &size , sizeof(int));
+			if(res != 0)
+				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
 			printk("Packet size for ll-device %d read.\n", minor);
         	break;
         case LL_SET_PACK_SIZE:

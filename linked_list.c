@@ -149,32 +149,25 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	while (bytes_busy == buff_size) {
-        	printk("the buffer is full\n");
-        	/*release spinlock*/
-        	spin_unlock(&(buffer_lock[minor]));
-        	if (filp->f_flags & O_NONBLOCK) {
-            		printk("mode is not-blocking therefore return\n");
-            		return -EAGAIN; //the buffer is full therefore no data can be written
-       		}
-        	printk("mode is blocking therefore sleep on the write queue\n");
-       		if (wait_event_interruptible(write_queue, ( atomic_read(&countBytes[minor]) < atomic_read(&maxStreamSizes[minor])) ) ){
-                	printk("a signal is received.Exit\n");
-			return -ERESTARTSYS; /* -ERESTARTSYS is returned iff the thread is woken up by a signal
-					      * 0 is returned when the condition is TRUE
-					      */
+		printk("the buffer is full\n");
+		/*release spinlock*/
+		spin_unlock(&(buffer_lock[minor]));
+		if (filp->f_flags & O_NONBLOCK) {
+				printk("mode is not-blocking therefore return\n");
+				return -EAGAIN; //the buffer is full therefore no data can be written
 		}
-        	/* if I reach this point means that 0 is returned by the wait_event_interruptible
-		   therefore the buffer is not full
-		   but first we have to get again the spinlock because somebody else can be into the write queue
-		*/
-        	spin_lock(&(buffer_lock[minor]));
+		printk("mode is blocking therefore sleep on the write queue\n");
+		if (wait_event_interruptible(write_queue, ( atomic_read(&countBytes[minor]) < atomic_read(&maxStreamSizes[minor])) ) ){
+			printk("a signal is received.Exit\n");
+			return -ERESTARTSYS; // Woke up by a signal -> -ERESTARTSYS
+		}
+		
+		spin_lock(&(buffer_lock[minor]));
 		buff_size = atomic_read(&maxStreamSizes[minor]);
 		bytes_busy = atomic_read(&countBytes[minor]);
    	}
-	/* If this point is reached, I have exclusive access to the buffer
-     	  * and there is sufficient space into the buffer 
-	  * therefore I procede with the write
-     	  */
+   	
+	// From now exclusive access + buffer not full
 	if((buff_size-bytes_busy)<count) /* BEST EFFORT WRITE */
 		count = buff_size - bytes_busy;
 	
@@ -185,20 +178,22 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	p->readPos = 0;
 	p->next = NULL;
 	/*add the packet on the head of the linkedlist*/
-	if(bytes_busy==0){
-		minorStreams[minor]=p;
+	if(IS_EMPTY(minor)) {
+		minorStreams[minor] = p;
 		lastPacket[minor] = p;
 	}
 	/*add the packet on queue of the linkedlist*/
-	else{
+	else {
 		lastPacket[minor]->next = p;
 		lastPacket[minor] = lastPacket[minor]->next;
 	}
 	res = copy_from_user(p->buffer, buff, count);
-	if(res != 0)
-        	return -EINVAL; /*copy_from_user returns 0 if everything is gone OK
-				  *otherwise if there was an error it does not return 0
-				  */
+	if(res != 0) {
+		printk("error : failed to copy from user\n");
+		spin_unlock(&(buffer_lock[minor]));
+		return -EINVAL; // Error in the copy_to_user (res !=  0)
+	}
+		
   	atomic_set(&(countBytes[minor]),bytes_busy+count);
 	wake_up_interruptible(&(read_queue));
 	spin_unlock(&(buffer_lock[minor]));
@@ -207,13 +202,12 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 
 static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
 	int minor=iminor(filp->f_path.dentry->d_inode);
-    int res = 0;
-    int residual;
-    int to_end;
-    int byte_read = 0;
-    int buffer_size;
-    printk("Read-Packet was called on dharma-device %d\n", minor);
-
+	int res;
+	int readable_bytes;
+	int to_copy;
+	Packet* p;
+    
+    printk("Read-Packet was called on ll-device %d\n", minor);
 
     // acquire spinlock
     spin_lock(&(buffer_lock[minor]));
@@ -239,8 +233,41 @@ static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t si
         spin_lock(&(buffer_lock[minor]));
     }
     // if we get here, then data is in the buffer AND we have exclusive access to it: we're ready to go.
-
     printk("After buffer check\n");
+    
+    // First packet in the stream
+    p = minorStreams[minor];
+    
+    // Checking for previous read-streams
+    readable_bytes = p->bufferSize - p->readPos;
+    
+    // Checking for bytes to be read effectively
+    if(size < readable_bytes)
+		to_copy = size;
+	else
+		to_copy = readable_bytes;
+    
+    // Copying to user buffer
+    /* TODO (Optimization tip): Dovremo usare anche qui un buffer 
+     * temporaneo come per la read stream. */
+    res = copy_to_user(out_buffer, (char *)(p->buffer[readPos]), to_copy);
+    
+    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
+    if(res != 0){
+        //as if 0 bytes were read. Exit
+        spin_unlock(&(buffer_lock[minor]));
+        return -EINVAL;
+    }
+    
+    // Update list and counters
+    minorStreams[minor] = minorStreams[minor]->next;
+    // Case 1: readPos bytes already counted
+    // atomic_sub(readable_bytes, &bytes_busy[minor]);
+    // Case 2: readPos bytes not counted
+    atomic_sub(p->bufferSize, &bytes_busy[minor]);
+    
+    // Free the memory
+    kfree(p);
     
     wake_up_interruptible(&write_queue);
 
@@ -249,7 +276,99 @@ static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t si
 }
 
 static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
-	
+	int minor=iminor(filp->f_path.dentry->d_inode);
+	int res;
+	int bytes_read = 0;
+	char* temp_buff;
+	int tempPos = 0;
+	int to_read;
+	int left;
+	Packet* p, temp;
+    
+    printk("Read-Stream was called on ll-device %d\n", minor);
+
+    // acquire spinlock
+    spin_lock(&(buffer_lock[minor]));
+
+    printk("Before buffer check\n");
+
+    while (IS_EMPTY(minor)) {
+        printk("Buffer is empty\n");
+        // release spinlock
+        spin_unlock(&(buffer_lock[minor]));
+
+        printk("Should we block?\n");
+        if (filp->f_flags & O_NONBLOCK) {
+            printk("No blocking\n");
+            return -EAGAIN;  // EGAIN:resource is temporarily unavailable
+        }
+
+        printk("Sleeping on the read queue\n");
+        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+            return -ERESTARTSYS;
+            
+        // otherwise loop, but first re-acquire spinlock
+        spin_lock(&(buffer_lock[minor]));
+    }
+    // if we get here, then data is in the buffer AND we have exclusive access to it: we're ready to go.
+    printk("After buffer check\n");
+    
+    // Alloc temporary buff to keep output
+    temp_buff = kmalloc(size, GFP_KERNEL);
+    
+    // First packet in the stream
+    p = minorStreams[minor];
+    
+    while(p != NULL || bytes_read == size) {
+		// left to read
+		left = bytes_read - size;
+		// How much to read this round
+		if(left < p->bufferSize - p->readPos)
+			to_read = left;
+		else
+			to_read = p->bufferSize - p->readPos;
+			
+		memcpy(temp_buff[tempPos], p->buffer[readPos], left);
+		
+		// Update bytes_read
+		bytes_read += to_read;
+		
+		// For sure, now bytes_read = size
+		if(p->readPos + to_read < p->bufferSize) {
+			/* TODO (Optimization tip): We could in this case reduce the
+			 * size needed for the packet, in order to free some of the 
+			 * bytes that was previuosly used to keep the bytes that has
+			 * been already read by some user. */
+			p->readPos += to_read;
+		}
+		else {
+			temp = p;
+			p = p->next;
+			kfree(temp);
+		}		
+	}
+    
+    // Copy the buffer to user
+    res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
+    
+    // Free temp buff
+    kfree(temp_buff);
+    
+    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
+    if(res != 0){
+        //as if 0 bytes were read. Exit
+        spin_unlock(&(buffer_lock[minor]));
+        return -EINVAL;
+    }
+    
+    // Case 1: readPos bytes already counted
+    // atomic_sub(bytes_read, &bytes_busy[minor]);
+    // Case 2: readPos bytes not counted
+    atomic_sub(bytes_read - p->readPos, &bytes_busy[minor]);
+    
+    wake_up_interruptible(&write_queue);
+    spin_unlock(&(buffer_lock[minor]));
+    return byte_read;
 }
 
 static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {

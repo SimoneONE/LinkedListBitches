@@ -19,6 +19,7 @@ MODULE_AUTHOR("BOOM BITCHES");
 
 int major;
 
+#define IS_EMPTY (minorStreams[minor] == NULL)
 #define O_PACKET 0x80000000
 
 DECLARE_WAIT_QUEUE_HEAD(read_queue);
@@ -141,10 +142,59 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	return 0;
 }
 
-static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {
-	return 0;
+static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
+	int minor=iminor(filp->f_path.dentry->d_inode);
+    int res = 0;
+    int residual;
+    int to_end;
+    int byte_read = 0;
+    int buffer_size;
+    printk("Read-Packet was called on dharma-device %d\n", minor);
 
+
+    // acquire spinlock
+    spin_lock(&(buffer_lock[minor]));
+
+    printk("Before buffer check\n");
+
+    while (IS_EMPTY(minor)) {
+        printk("Buffer is empty\n");
+        // release spinlock
+        spin_unlock(&(buffer_lock[minor]));
+
+        printk("Should we block?\n");
+        if (filp->f_flags & O_NONBLOCK) {
+            printk("No blocking\n");
+            return -EAGAIN;  // EGAIN:resource is temporarily unavailable
+        }
+
+        printk("Sleeping on the read queue\n");
+        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+            return -ERESTARTSYS;
+            
+        // otherwise loop, but first re-acquire spinlock
+        spin_lock(&(buffer_lock[minor]));
+    }
+    // if we get here, then data is in the buffer AND we have exclusive access to it: we're ready to go.
+
+    printk("After buffer check\n");
+    
+    wake_up_interruptible(&write_queue);
+
+    spin_unlock(&(buffer_lock[minor]));
+    return byte_read;
 }
+
+static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
+	
+}
+
+static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {
+	if ((unsigned long)filp->private_data & O_PACKET)
+        return dharma_read_packet(filp, out_buffer, size, offset);
+    return dharma_read_stream(filp, out_buffer, size, offset);
+}
+
 
 static struct file_operations fops = {
 	.read = ll_read,

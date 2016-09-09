@@ -33,11 +33,10 @@ atomic_t segmentSizes[DEVICE_MAX_NUMBER];
 
 static int ll_open(struct inode *inode, struct file *filp) {
 	int minor;
-	printk(KERN_INFO "open called\n");
-	
+
 	try_module_get(THIS_MODULE);
 	minor = iminor(filp->f_path.dentry->d_inode);
-	printk(KERN_INFO "minor is %d\n", minor);
+	printk(KERN_INFO "open operation on device with minor %d is called\n", minor);
 	
 	if( minor < DEVICE_MAX_NUMBER) {
 		atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
@@ -51,22 +50,14 @@ static int ll_open(struct inode *inode, struct file *filp) {
 }
 
 static int ll_release(struct inode *inode, struct file *filp) {
-	printk(KERN_INFO "release called\n");
-	
-	int i;
-	module_put(THIS_MODULE);
-	
-	// We have to free the streams
-	for(i = 0; i < DEVICE_MAX_NUMBER; i++) {
-		Packet* p = minorStreams[i];
-		while(p != NULL) {
-			Packet* temp = p;
-			kfree(p->buffer);
-			p = p->next;
-			kfree(temp);
-		}
-	}
-	
+	int minor = iminor(filp->f_path.dentry->d_inode);
+	module_put(THIS_MODULE);/* decrements the reference counter*/
+
+	/*I do not free the buffer because may be another device with
+	  the same pair <major,minor> that is working on that buffer.
+	  The buffer is freed when the module is unmounted.*/
+
+	printk(KERN_INFO "release operation on device with minor %d is called\n",minor);
 	return 0;
 }
 
@@ -136,6 +127,17 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 }
 
 static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_t *f_pos) {
+	int minor = iminor(filp->f_path.dentry->d_inode);
+	//int result = 0;
+	//int buff_size = 0;
+	printk("write operation on device with minor %d is called\n",minor);
+	if(count < MIN_LIMIT_PACKET){
+		printk("error : bytes lower than the minimum packet size\n");
+		return -EINVAL;	
+	}
+	else if (count > MAX_LIMIT_PACKET){
+		printk("error : bytes greater than the maximum packet size\n");
+	}
 	return 0;
 }
 
@@ -165,9 +167,18 @@ int init_module(void){
 }
 
 void cleanup_module(void) {
-
+	int i;
 	unregister_chrdev(major, DEVICE_NAME);
 	printk(KERN_INFO "linkedlist device unregistered, it was assigned major number %d\n", major);
-	/* Freeing the device buffer da fare*/
+	// We have to free the streams
+	for(i = 0; i < DEVICE_MAX_NUMBER; i++) {
+		Packet* p = minorStreams[i];
+		while(p != NULL) {
+			Packet* temp = p;
+			kfree(p->buffer);
+			p = p->next;
+			kfree(temp);
+		}
+	}
   	printk("removing memory module\n");
 }

@@ -19,7 +19,7 @@ MODULE_AUTHOR("BOOM BITCHES");
 
 int major;
 
-#define IS_EMPTY (minorStreams[minor] == NULL)
+#define IS_EMPTY(minor) (minorStreams[minor] == NULL)
 #define O_PACKET 0x80000000
 
 DECLARE_WAIT_QUEUE_HEAD(read_queue);
@@ -200,7 +200,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	return count;
 }
 
-static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
+static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
 	int minor=iminor(filp->f_path.dentry->d_inode);
 	int res;
 	int readable_bytes;
@@ -250,7 +250,7 @@ static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t si
     // Copying to user buffer
     /* TODO (Optimization tip): Dovremo usare anche qui un buffer 
      * temporaneo come per la read stream. */
-    res = copy_to_user(out_buffer, (char *)(p->buffer[readPos]), to_copy);
+    res = copy_to_user(out_buffer, (char *)(&(p->buffer[p->readPos])), to_copy);
     
     //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
     if(res != 0){
@@ -264,7 +264,7 @@ static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t si
     // Case 1: readPos bytes already counted
     // atomic_sub(readable_bytes, &bytes_busy[minor]);
     // Case 2: readPos bytes not counted
-    atomic_sub(p->bufferSize, &bytes_busy[minor]);
+    atomic_sub(p->bufferSize, &countBytes[minor]);
     
     // Free the memory
     kfree(p);
@@ -272,10 +272,10 @@ static ssize_t dharma_read_packet(struct file *filp, char *out_buffer, size_t si
     wake_up_interruptible(&write_queue);
 
     spin_unlock(&(buffer_lock[minor]));
-    return byte_read;
+    return to_copy;
 }
 
-static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
+static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
 	int minor=iminor(filp->f_path.dentry->d_inode);
 	int res;
 	int bytes_read = 0;
@@ -283,7 +283,8 @@ static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t si
 	int tempPos = 0;
 	int to_read;
 	int left;
-	Packet* p, temp;
+	Packet* p;
+	Packet* temp;
     
     printk("Read-Stream was called on ll-device %d\n", minor);
 
@@ -328,7 +329,7 @@ static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t si
 		else
 			to_read = p->bufferSize - p->readPos;
 			
-		memcpy(temp_buff[tempPos], p->buffer[readPos], left);
+		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[p->readPos])), left);
 		
 		// Update bytes_read
 		bytes_read += to_read;
@@ -364,17 +365,17 @@ static ssize_t dharma_read_stream(struct file *filp, char *out_buffer, size_t si
     // Case 1: readPos bytes already counted
     // atomic_sub(bytes_read, &bytes_busy[minor]);
     // Case 2: readPos bytes not counted
-    atomic_sub(bytes_read - p->readPos, &bytes_busy[minor]);
+    atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
     
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
-    return byte_read;
+    return bytes_read;
 }
 
 static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {
 	if ((unsigned long)filp->private_data & O_PACKET)
-        return dharma_read_packet(filp, out_buffer, size, offset);
-    return dharma_read_stream(filp, out_buffer, size, offset);
+        return ll_read_packet(filp, buffer, count, f_pos);
+    return ll_read_stream(filp, buffer, count, f_pos);
 }
 
 

@@ -69,6 +69,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 	int minor;
 	int res;
 	int size;	
+	int old_size;
 	printk(KERN_INFO "ioctl called\n");
 	minor = iminor(filp->f_path.dentry->d_inode);
 	printk(KERN_INFO "minor is %d\n", minor);
@@ -99,12 +100,15 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	break;
         case LL_SET_MAX_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
+        	old_size = atomic_read(&(maxStreamSizes[minor]));
         	if( size < MIN_LIMIT_STREAM || size > MAX_LIMIT_STREAM ){
         		return -EINVAL;
         	}
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
-                printk(KERN_INFO "Maximum buffer size set to: %d", size);
+        	if(size > old_size)
+				wake_up_interruptible(&write_queue);
+			printk(KERN_INFO "Maximum buffer size set to: %d", size);
         	break;
 		case LL_GET_PACK_SIZE:
         	printk("Returning current packet size for ll-device %d...\n", minor);

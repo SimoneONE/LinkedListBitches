@@ -185,7 +185,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	p->readPos = 0;
 	p->next = NULL;
 	/*add the packet on the head of the linkedlist*/
-	if(bytes_busy==0){
+	if(minorStreams[minor]==NULL){
 		minorStreams[minor]=p;
 		lastPacket[minor] = p;
 	}

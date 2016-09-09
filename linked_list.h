@@ -7,8 +7,8 @@
 
 #define DEVICE_NAME "linked_list"
 #define DEVICE_MAX_NUMBER 256
-#define MAX_STREAM_SIZE 64
-#define MAX_PACKET_SIZE 8
+#define MAX_STREAM_SIZE 64/*initial value*/
+#define MAX_PACKET_SIZE 8 /*initial value*/
 #define MAX_LIMIT_STREAM 1024
 #define MIN_LIMIT_STREAM 32
 #define MAX_LIMIT_PACKET 16

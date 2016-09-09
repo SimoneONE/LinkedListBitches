@@ -30,6 +30,7 @@ Packet* minorStreams[DEVICE_MAX_NUMBER];
 // Stream/Packet dynamic sizes
 atomic_t maxStreamSizes[DEVICE_MAX_NUMBER];
 atomic_t segmentSizes[DEVICE_MAX_NUMBER];
+atomic_t countBytes[DEVICE_MAX_NUMBER];
 
 static int ll_open(struct inode *inode, struct file *filp) {
 	int minor;
@@ -41,6 +42,7 @@ static int ll_open(struct inode *inode, struct file *filp) {
 	if( minor < DEVICE_MAX_NUMBER) {
 		atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
 		atomic_set(&(segmentSizes[minor]), MAX_PACKET_SIZE);
+		atomic_set(&(countBytes[minor]),0);
 		return 0; /* success */
 	} 
 	else {
@@ -137,6 +139,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	}
 	else if (count > MAX_LIMIT_PACKET){
 		printk("error : bytes greater than the maximum packet size\n");
+		return -EINVAL;
 	}
 	return 0;
 }

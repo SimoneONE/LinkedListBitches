@@ -26,7 +26,7 @@ DECLARE_WAIT_QUEUE_HEAD(write_queue);
 
 spinlock_t buffer_lock[DEVICE_MAX_NUMBER];
 Packet* minorStreams[DEVICE_MAX_NUMBER];
-
+Packet* lastPacket[DEVICE_MAX_NUMBER];
 // Stream/Packet dynamic sizes
 atomic_t maxStreamSizes[DEVICE_MAX_NUMBER];
 atomic_t segmentSizes[DEVICE_MAX_NUMBER];
@@ -129,9 +129,11 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 }
 
 static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_t *f_pos) {
+	Packet* p;
+	int res;
+	int buff_size;
+	int bytes_busy;
 	int minor = iminor(filp->f_path.dentry->d_inode);
-	//int result = 0;
-	//int buff_size = 0;
 	printk("write operation on device with minor %d is called\n",minor);
 	if(count < MIN_LIMIT_PACKET){
 		printk("error : bytes lower than the minimum packet size\n");
@@ -141,7 +143,65 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		printk("error : bytes greater than the maximum packet size\n");
 		return -EINVAL;
 	}
-	return 0;
+	/*acquire the lock*/
+	spin_lock(&(buffer_lock[minor]));
+	buff_size = atomic_read(&maxStreamSizes[minor]);
+	bytes_busy = atomic_read(&countBytes[minor]);
+	while (bytes_busy == buff_size) {
+        	printk("the buffer is full\n");
+        	/*release spinlock*/
+        	spin_unlock(&(buffer_lock[minor]));
+        	if (filp->f_flags & O_NONBLOCK) {
+            		printk("mode is not-blocking therefore return\n");
+            		return -EAGAIN; //the buffer is full therefore no data can be written
+       		}
+        	printk("mode is blocking therefore sleep on the write queue\n");
+       		if (wait_event_interruptible(write_queue, ( atomic_read(&countBytes[minor]) < atomic_read(&maxStreamSizes[minor])) ) ){
+                	printk("a signal is received.Exit\n");
+			return -ERESTARTSYS; /* -ERESTARTSYS is returned iff the thread is woken up by a signal
+					      * 0 is returned when the condition is TRUE
+					      */
+		}
+        	/* if I reach this point means that 0 is returned by the wait_event_interruptible
+		   therefore the buffer is not full
+		   but first we have to get again the spinlock because somebody else can be into the write queue
+		*/
+        	spin_lock(&(buffer_lock[minor]));
+		buff_size = atomic_read(&maxStreamSizes[minor]);
+		bytes_busy = atomic_read(&countBytes[minor]);
+   	}
+	/* If this point is reached, I have exclusive access to the buffer
+     	  * and there is sufficient space into the buffer 
+	  * therefore I procede with the write
+     	  */
+	if((buff_size-bytes_busy)<count) /* BEST EFFORT WRITE */
+		count = buff_size - bytes_busy;
+	
+	/*allocating struct Packet*/
+	p = kmalloc(sizeof(Packet), GFP_KERNEL);
+  	p->buffer = kmalloc(count, GFP_KERNEL);
+  	p->bufferSize = count;
+	p->readPos = 0;
+	p->next = NULL;
+	/*add the packet on the head of the linkedlist*/
+	if(bytes_busy==0){
+		minorStreams[minor]=p;
+		lastPacket[minor] = p;
+	}
+	/*add the packet on queue of the linkedlist*/
+	else{
+		lastPacket[minor]->next = p;
+		lastPacket[minor] = lastPacket[minor]->next;
+	}
+	res = copy_from_user(p->buffer, buff, count);
+	if(res != 0)
+        	return -EINVAL; /*copy_from_user returns 0 if everything is gone OK
+				  *otherwise if there was an error it does not return 0
+				  */
+  	atomic_set(&(countBytes[minor]),bytes_busy+count);
+	wake_up_interruptible(&(read_queue));
+	spin_unlock(&(buffer_lock[minor]));
+	return count;
 }
 
 static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {

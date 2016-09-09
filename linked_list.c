@@ -148,7 +148,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	spin_lock(&(buffer_lock[minor]));
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
-	while (bytes_busy == buff_size) {
+	while (bytes_busy >= buff_size) {
 		printk("the buffer is full\n");
 		/*release spinlock*/
 		spin_unlock(&(buffer_lock[minor]));

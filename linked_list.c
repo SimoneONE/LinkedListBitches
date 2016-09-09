@@ -266,7 +266,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     // Update list and counters
     minorStreams[minor] = minorStreams[minor]->next;
     // Case 1: readPos bytes already counted
-    // atomic_sub(readable_bytes, &bytes_busy[minor]);
+    // atomic_sub(readable_bytes, &countBytes[minor]);
     // Case 2: readPos bytes not counted
     atomic_sub(p->bufferSize, &countBytes[minor]);
     

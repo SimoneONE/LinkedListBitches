@@ -198,7 +198,8 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		return -EINVAL; // Error in the copy_to_user (res !=  0)
 	}
 		
-  	atomic_set(&(countBytes[minor]),bytes_busy+count);
+  	//atomic_set(&(countBytes[minor]),bytes_busy+count);
+	atomic_add(count,&(countBytes[minor]));
 	wake_up_interruptible(&(read_queue));
 	spin_unlock(&(buffer_lock[minor]));
 	return count;
@@ -326,7 +327,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     
     while(p != NULL || bytes_read == size) {
 		// left to read
-		left = bytes_read - size;
+		left = size - bytes_read;
 		// How much to read this round
 		if(left < p->bufferSize - p->readPos)
 			to_read = left;

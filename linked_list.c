@@ -32,11 +32,11 @@ atomic_t maxStreamSizes[DEVICE_MAX_NUMBER];
 atomic_t segmentSizes[DEVICE_MAX_NUMBER];
 
 static int ll_open(struct inode *inode, struct file *filp) {
-	
+	int minor;
 	printk(KERN_INFO "open called\n");
 	
 	try_module_get(THIS_MODULE);
-	int minor = iminor(filp->f_path.dentry->d_inode);
+	minor = iminor(filp->f_path.dentry->d_inode);
 	printk(KERN_INFO "minor is %d\n", minor);
 	
 	if( minor < DEVICE_MAX_NUMBER) {
@@ -72,37 +72,36 @@ static int ll_release(struct inode *inode, struct file *filp) {
 
 
 static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
+	int minor;
+	int res;
+	int size;	
 	printk(KERN_INFO "ioctl called\n");
-	
-	int minor = iminor(filp->f_path.dentry->d_inode);
+	minor = iminor(filp->f_path.dentry->d_inode);
 	printk(KERN_INFO "minor is %d\n", minor);
-	
-	int res, size;
-
 	switch (cmd) {
-        case DHARMA_SET_PACKET_MODE :
+        case LL_SET_PACKET_MODE :
             printk("Packet mode now is active on ll-device %d\n", minor);
             filp->private_data = (void *) ((unsigned long)filp->private_data | O_PACKET);
             break;
-        case DHARMA_SET_STREAM_MODE :
+        case LL_SET_STREAM_MODE :
             printk("Stream mode now is active on ll-device %d\n", minor);
             filp->private_data = (void *) ((unsigned long)filp->private_data & ~O_PACKET);
             break;
-        case DHARMA_SET_BLOCKING :
+        case LL_SET_BLOCKING :
             printk("Blocking mode now is active on ll-device %d\n", minor);
             filp->f_flags &= ~O_NONBLOCK;
             break;
-        case DHARMA_SET_NONBLOCKING :
+        case LL_SET_NONBLOCKING :
             printk("Non blocking mode now is active on ll-device %d\n", minor);
             filp->f_flags |= O_NONBLOCK;
             break;
         case LL_GET_MAX_SIZE:
         	printk("Returning current buffer size for ll-device %d...\n", minor);
-			size = atomic_read(&(maxStreamSizes[minor]));
-            res = copy_to_user((int *) arg, &size , sizeof(int));
-            if(res != 0)
+		size = atomic_read(&(maxStreamSizes[minor]));
+            	res = copy_to_user((int *) arg, &size , sizeof(int));
+            	if(res != 0)
 				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
-			printk("Buffer size for ll-device %d read.\n", minor);
+		printk("Buffer size for ll-device %d read.\n", minor);
         	break;
         case LL_SET_MAX_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
@@ -111,14 +110,14 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	}
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
-            printk(KERN_INFO "Maximum buffer size set to: %d", new_size);
+                printk(KERN_INFO "Maximum buffer size set to: %d", size);
         	break;
-		case LL_GET_PACK_SIZE:
+	case LL_GET_PACK_SIZE:
         	printk("Returning current packet size for ll-device %d...\n", minor);
-			size = atomic_read(&(segmentSizes[minor]));
-            res = copy_to_user((int *) arg, &size , sizeof(int));
-            if(res != 0)
-				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
+		size = atomic_read(&(segmentSizes[minor]));
+            	res = copy_to_user((int *) arg, &size , sizeof(int));
+            	if(res != 0)
+			return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
 			printk("Packet size for ll-device %d read.\n", minor);
         	break;
         case LL_SET_PACK_SIZE:
@@ -128,7 +127,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	}
         	atomic_set(&(segmentSizes[minor]), size);
         	
-            printk(KERN_INFO "Maximum packet size set to: %d", new_size);
+            printk(KERN_INFO "Maximum packet size set to: %d", size);
         	break;
         default:
             return -EINVAL;
@@ -155,7 +154,7 @@ static struct file_operations fops = {
 
 int init_module(void){
 	
-	// with major==0 the function dinamically allocates a major and return corresponding number
+	/* with major==0 the function dinamically allocates a major and return corresponding number */
 	major = register_chrdev(0, DEVICE_NAME, &fops); 
 	if (major < 0) {
 	  printk("registering linkedlist device failed\n");

@@ -373,9 +373,9 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     }
     
     // Case 1: readPos bytes already counted
-    // atomic_sub(bytes_read, &countBytes[minor]);
+     atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
-    atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
+    //atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
     
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));

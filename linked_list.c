@@ -329,8 +329,8 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     
     // First packet in the stream
     p = minorStreams[minor];
-    
-    while(p != NULL || bytes_read != size) {
+    printk("before while\n");
+    while(p != NULL && bytes_read != size) {
 		// left to read
 		left = size - bytes_read;
 		// How much to read this round
@@ -358,7 +358,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			kfree(temp);
 		}		
 	}
-    
+    printk("after while\n");
     // Copy the buffer to user
     res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
     

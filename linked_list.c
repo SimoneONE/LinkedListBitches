@@ -437,9 +437,9 @@ int init_module(void){
 	  printk("registering linkedlist device failed\n");
 	  return major;
 	}
-	int minor=iminor(filp->f_path.dentry->d_inode);
+
 	for(i = 0; i < DEVICE_MAX_NUMBER; i++)
-		atomic_set (&activeStreams[minor], 0);
+		atomic_set (&activeStreams[i], 0);
 	
 	printk("linkedlist device registered, it is assigned major number %d\n", major);
 	return 0;

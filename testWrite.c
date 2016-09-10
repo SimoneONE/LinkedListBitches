@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     char* string;
     int numBytes = 0;
 
-    if( argc == 2 ) {
+    if( argc == 3 ) {
         
         numBytes = atoi(argv[1]);
         
@@ -68,6 +68,7 @@ int main(int argc, char *argv[])
     else {
         printf("Usage: writeTest n, where:\n");
         printf("- n is the number of bytes you want to write.\n");
+        printf("- m is the mode: \"nb\" for non blocking, \"b\" for blocking.\n");
         printf("Exiting.\n");
         return 0;
     }
@@ -78,11 +79,16 @@ int main(int argc, char *argv[])
 		printf("There was an error opening linked_list0\n");
         return -1;
     }
- 
-	printf("Testing write and stream, non-blocking read...\n");
+
 	
 	int wrote = 0;
-    ioctl(filedesc,LL_SET_NONBLOCKING,0);
+	if(strcmp(argv[2], "nb") == 0) {
+		ioctl(filedesc,LL_SET_NONBLOCKING,0);
+		printf("Testing write and stream, non-blocking read...\n");
+	}
+	else
+		printf("Testing write and stream, blocking read...\n");
+		
     if ((wrote = write(filedesc, string, numBytes)) < 0) {
         printf("There was an error writing to linked_list0; wrote: %d\n", wrote);
         return -1;

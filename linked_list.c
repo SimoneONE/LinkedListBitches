@@ -289,7 +289,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     spin_unlock(&(buffer_lock[minor]));
     return to_copy;
 }
-
+/*
 static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
 	int minor=iminor(filp->f_path.dentry->d_inode);
 	int res;
@@ -362,10 +362,10 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		
 		// For sure, now bytes_read = size
 		if(p->readPos + to_read < p->bufferSize) {
-			/* TODO (Optimization tip): We could in this case reduce the
-			 * size needed for the packet, in order to free some of the 
-			 * bytes that was previuosly used to keep the bytes that has
-			 * been already read by some user. */
+			// TODO (Optimization tip): We could in this case reduce the
+			// size needed for the packet, in order to free some of the 
+			// bytes that was previuosly used to keep the bytes that has
+			// been already read by some user.
 			p->readPos += to_read;
 			printk("p->readPos + to_read < p->bufferSize => p->readPos: %d\n", p->readPos);
 		}
@@ -423,18 +423,107 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			printk("updating countBytes => bytes_read: %d\n", bytes_read);
 		}
     }
-    /*
-    if(p==NULL){
-		printk("p = NULL!\n");
-		atomic_sub(bufferSizeTemp, &countBytes[minor]);
-		printk("updating countBytes => bufferSizeTemp: %d\n", bufferSizeTemp);	
+
+    wake_up_interruptible(&write_queue);
+    spin_unlock(&(buffer_lock[minor]));
+    return bytes_read;
+}
+*/
+
+static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, loff_t *offset) {
+	int minor=iminor(filp->f_path.dentry->d_inode);
+	int res;
+	int bytes_read = 0;
+	int left;
+	int to_read;
+	int tempPos = 0;
+	int freed = 0;
+	int lastSize = 0;
+	char* temp_buff;
+	Packet* p;
+	Packet* temp;
+	
+	printk("Read-Stream was called on ll-device %d\n", minor);
+
+    // acquire spinlock
+    spin_lock(&(buffer_lock[minor]));
+
+    printk("Before buffer check\n");
+
+    while (IS_EMPTY(minor)) {
+        printk("Buffer is empty\n");
+        // release spinlock
+        spin_unlock(&(buffer_lock[minor]));
+
+        printk("Should we block?\n");
+        if (filp->f_flags & O_NONBLOCK) {
+            printk("No blocking\n");
+            return -EAGAIN;  // EGAIN:resource is temporarily unavailable
+        }
+
+        printk("Sleeping on the read queue\n");
+        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+            return -ERESTARTSYS;
+            
+        // otherwise loop, but first re-acquire spinlock
+        spin_lock(&(buffer_lock[minor]));
+    }
+    // if we get here, then data is in the buffer AND we have exclusive access to it: we're ready to go.
+    printk("After buffer check\n");
+    
+    // Alloc temporary buff to keep output
+    temp_buff = kmalloc(size, GFP_KERNEL);
+    
+    // First packet in the stream
+    p = minorStreams[minor];
+    printk("before while\n");
+    while(p != NULL && bytes_read != size) {
+		freed += lastSize;
+		left = size  - bytes_read;
+		printk("left: %d\n", left);
+		
+		// Last packet to be read
+		if(left <= p->bufferSize - p->readPos)
+			to_read = left;
+		// Not (Eventually) the last one
+		else
+			to_read = p->bufferSize - p->readPos;
+			
+		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[p->readPos])), to_read);
+		
+		// count to_read bytes
+		bytes_read += to_read;
+		tempPos += to_read;
+		p->readPos += to_read;
+		
+		temp = p;
+		p = p->next;
+		
+		lastSize = temp->bufferSize;
+		kfree(temp);
 	}
-	else {
-		printk("p != NULL!\n");
-		atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
-		printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
-	}
-    */
+    
+    printk("after while\n");
+    minorStreams[minor]=p;
+    // Copy the buffer to user
+    res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
+    
+    // Free temp buff
+    kfree(temp_buff);
+    
+    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
+    if(res != 0){
+        //as if 0 bytes were read. Exit
+        spin_unlock(&(buffer_lock[minor]));
+        return -EINVAL;
+    }
+    
+    // Case 1: readPos bytes already counted
+    //atomic_sub(bytes_read, &countBytes[minor]);
+    // Case 2: readPos bytes not counted
+    atomic_sub(freed, &countBytes[minor]);
+    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
+    
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;

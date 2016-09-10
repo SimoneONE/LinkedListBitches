@@ -32,6 +32,7 @@ Packet* lastPacket[DEVICE_MAX_NUMBER];
 atomic_t maxStreamSizes[DEVICE_MAX_NUMBER];
 atomic_t segmentSizes[DEVICE_MAX_NUMBER];
 atomic_t countBytes[DEVICE_MAX_NUMBER];
+atomic_t activeStreams[DEVICE_MAX_NUMBER];
 
 static int ll_open(struct inode *inode, struct file *filp) {
 	int minor;
@@ -41,7 +42,8 @@ static int ll_open(struct inode *inode, struct file *filp) {
 	printk(KERN_INFO "open operation on device with minor %d is called\n", minor);
 	
 	if( minor < DEVICE_MAX_NUMBER) {
-		if( minorStreams[minor] == NULL){
+		if(atomic_read(&activeStreams[minor]) == 0){
+			atomic_set(&activeStreams[minor], 1);
 			atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
 			atomic_set(&(segmentSizes[minor]), MAX_PACKET_SIZE);
 			atomic_set(&(countBytes[minor]),0);
@@ -427,6 +429,7 @@ static struct file_operations fops = {
 };
 
 int init_module(void){
+	int i;
 	
 	/* with major==0 the function dinamically allocates a major and return corresponding number */
 	major = register_chrdev(0, DEVICE_NAME, &fops); 
@@ -434,6 +437,10 @@ int init_module(void){
 	  printk("registering linkedlist device failed\n");
 	  return major;
 	}
+	
+	for(i = 0; i < DEVICE_MAX_NUMBER; i++)
+		atomic_set (&activeStreams[minor], 0);
+	
 	printk("linkedlist device registered, it is assigned major number %d\n", major);
 	return 0;
 }

@@ -50,23 +50,23 @@ int main(int argc, char *argv[])
             case 9:
                 string = "123456789";
                 break;
+            case 10:
+                string = "1234567890";
+                break;
+            case 16:
+                string = "aaaaaaaaaaaaaaaa";
+                break;
             case 20:
                 string = "aaaaaaaaaaaaaaaaaaaa";
                 break;
-            case 40:
-                string = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-                break;
-            case 50:
-                string = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-                break;
             default:
-                printf("Unexpected value. Expected values are 1,2,3,4,5,6,7,8,9,20,40 and 50.\n");
+                printf("Unexpected value. Expected values are 1,2,3,4,5,6,7,8,9,10,16 and 20.\n");
                 return 0;
                 break;
         }
     }
     else {
-        printf("Usage: writeTest n, where:\n");
+        printf("Usage: writeTest n m, where:\n");
         printf("- n is the number of bytes you want to write.\n");
         printf("- m is the mode: \"nb\" for non blocking, \"b\" for blocking.\n");
         printf("Exiting.\n");

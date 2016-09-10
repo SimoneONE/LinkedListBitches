@@ -400,9 +400,10 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
+    
     if(p==NULL){
 		printk("p = NULL!\n");
-		if(readPosTemp!=bufferSizeTemp) {
+		if(readPosTemp!=bytes_read) {
 			atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
 			printk("updating countBytes => bytes_read - readPosTemp: %d\n", bytes_read - readPosTemp);	
 		}
@@ -413,7 +414,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     }
     else {
 		printk("p != NULL!\n");
-		if(p->readPos!=p->bufferSize) {
+		if(p->readPos!=bytes_read) {
 				atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
 				printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
 		}
@@ -422,6 +423,18 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			printk("updating countBytes => bytes_read: %d\n", bytes_read);
 		}
     }
+    /*
+    if(p==NULL){
+		printk("p = NULL!\n");
+		atomic_sub(bufferSizeTemp, &countBytes[minor]);
+		printk("updating countBytes => bufferSizeTemp: %d\n", bufferSizeTemp);	
+	}
+	else {
+		printk("p != NULL!\n");
+		atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
+		printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
+	}
+    */
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;

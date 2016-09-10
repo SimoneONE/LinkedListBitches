@@ -438,7 +438,6 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 	int to_read;
 	int tempPos = 0;
 	int freed = 0;
-	int lastSize = 0;
 	char* temp_buff;
 	Packet* p;
 	Packet* temp;
@@ -478,7 +477,6 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     p = minorStreams[minor];
     printk("before while\n");
     while(p != NULL && bytes_read != size) {
-		freed += lastSize;
 		left = size  - bytes_read;
 		printk("left: %d\n", left);
 		
@@ -494,13 +492,15 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		// count to_read bytes
 		bytes_read += to_read;
 		tempPos += to_read;
-		p->readPos += to_read;
 		
-		temp = p;
-		p = p->next;
-		
-		lastSize = temp->bufferSize;
-		kfree(temp);
+		if(p->readPos + to_read < p->bufferSize)
+			p->readPos += to_read;
+		else {	
+			temp = p;
+			p = p->next;
+			freed += temp->bufferSize;
+			kfree(temp);
+		}
 	}
     
     printk("after while\n");

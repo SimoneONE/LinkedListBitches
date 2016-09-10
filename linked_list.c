@@ -295,6 +295,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 	char* temp_buff;
 	int tempPos = 0;
 	int readPosTemp=0;
+	int bufferSizeTemp=0;
 	int to_read;
 	int left;
 	Packet* p;
@@ -359,6 +360,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		else {
 			temp = p;
 			readPosTemp = temp->readPos;
+			bufferSizeTemp = temp->bufferSize;
 			p = p->next;
 			kfree(temp);
 		}		
@@ -381,10 +383,18 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
-    if(p==NULL)
-    	atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
-    else
-    	atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
+    if(p==NULL){
+	if(readPosTemp!=bufferSizeTemp)
+    		atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
+	else
+		atomic_sub(bytes_read,&countBytes[minor]);
+    }
+    else{
+	if(p->readPos!=p->bufferSize)
+    		atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
+        else
+		atomic_sub(bytes_read,&countBytes[minor]);
+    }
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;

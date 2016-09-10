@@ -72,10 +72,10 @@ int main(int argc, char *argv[])
         return 0;
     }
     
-    int filedesc = open("/dev/ll0", O_RDWR);
+    int filedesc = open("/dev/linked_list0", O_RDWR);
  
     if (filedesc < 0) {
-		printf("There was an error opening ll0\n");
+		printf("There was an error opening linked_list0\n");
         return -1;
     }
  

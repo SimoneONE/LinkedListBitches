@@ -202,7 +202,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		spin_unlock(&(buffer_lock[minor]));
 		return -EINVAL; // Error in the copy_to_user (res !=  0)
 	}
-	printk("written %d bytes\n",count);
+	printk("written %d bytes\n",(int)count);
   	//atomic_set(&(countBytes[minor]),bytes_busy+count);
 	atomic_add(count,&(countBytes[minor]));
 	wake_up_interruptible(&(read_queue));
@@ -330,7 +330,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // First packet in the stream
     p = minorStreams[minor];
     
-    while(p != NULL || bytes_read == size) {
+    while(p != NULL || bytes_read != size) {
 		// left to read
 		left = size - bytes_read;
 		// How much to read this round

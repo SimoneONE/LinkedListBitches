@@ -291,6 +291,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 	int bytes_read = 0;
 	char* temp_buff;
 	int tempPos = 0;
+	int readPosTemp=0;
 	int to_read;
 	int left;
 	Packet* p;
@@ -354,7 +355,9 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		}
 		else {
 			temp = p;
+			readPosTemp = temp->readPos;
 			p = p->next;
+			minorStreams[minor]=p;
 			kfree(temp);
 		}		
 	}
@@ -373,19 +376,32 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     }
     
     // Case 1: readPos bytes already counted
-     atomic_sub(bytes_read, &countBytes[minor]);
+    //atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
-    //atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
-    
+    if(p==NULL)
+    	atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
+    else
+    	atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;
 }
 
 static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_pos) {
+	/*int minor=iminor(filp->f_path.dentry->d_inode);
+	Packet *p = minorStreams[minor];
+	while(p!=NULL){
+		char data[p->bufferSize+1];
+		memcpy(data,p->buffer,p->bufferSize);
+		data[p->bufferSize]='\0';
+		printk("%s",data);
+		p=p->next;
+	}
+	printk("\n");*/
 	if ((unsigned long)filp->private_data & O_PACKET)
         return ll_read_packet(filp, buffer, count, f_pos);
-    return ll_read_stream(filp, buffer, count, f_pos);
+        return ll_read_stream(filp, buffer, count, f_pos);
+	//return 0;
 }
 
 

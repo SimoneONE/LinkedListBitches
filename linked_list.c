@@ -296,8 +296,6 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 	int bytes_read = 0;
 	char* temp_buff;
 	int tempPos = 0;
-	int readPosTemp=0;
-	int bufferSizeTemp=0;
 	int to_read;
 	int left;
 	Packet* p;
@@ -343,43 +341,40 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		left = size - bytes_read;
 		printk("left: %d\n", left);
 		// How much to read this round
-		printk("p->bufferSize: %d, p->readPos: %d\n", p->bufferSize, p->readPos);
-		if(left < p->bufferSize - p->readPos) {
+		printk("p->bufferSize: %d\n", p->bufferSize);
+		if(left < p->bufferSize) {
 			to_read = left;
-			printk("left < p->bufferSize - p->readPos => to_read: %d\n", to_read);
+			printk("left < p->bufferSize  => to_read: %d\n", to_read);
 		}
 		else {
-			to_read = p->bufferSize - p->readPos;
-			printk("left >= p->bufferSize - p->readPos => to_read: %d\n", to_read);
+			to_read = p->bufferSize;
+			printk("left >= p->bufferSize => to_read: %d\n", to_read);
 		}
 		
-		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[p->readPos])), to_read);
-		
+		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[0])), to_read);
+		tempPos+=to_read;
 		// Update bytes_read
 		bytes_read += to_read;
-		tempPos += to_read;
-		printk("Updating => bytes_read: %d, tempPos: %d\n", bytes_read, tempPos);
+		printk("Updating => bytes_read: %d\n", bytes_read);
 		
 		// For sure, now bytes_read = size
-		if(p->readPos + to_read < p->bufferSize) {
+		if(to_read < p->bufferSize) {
 			/* TODO (Optimization tip): We could in this case reduce the
 			 * size needed for the packet, in order to free some of the 
 			 * bytes that was previuosly used to keep the bytes that has
 			 * been already read by some user. */
-			p->readPos += to_read;
-			printk("p->readPos + to_read < p->bufferSize => p->readPos: %d\n", p->readPos);
+			Packet * new_p = kmalloc( sizeof(Packet), GFP_KERNEL);
+			new_p->buffer = kmalloc( p->bufferSize - to_read, GFP_KERNEL);
+			new_p->bufferSize = p->bufferSize - to_read;
+			memcpy((void*)(&(new_p->buffer[0])), (void*)(&(p->buffer[to_read])), new_p->bufferSize);
+			new_p->next = p->next;
+			kfree(p);
+			p=new_p;
 		}
 		else {
 			temp = p;
-			readPosTemp = temp->readPos;
-			bufferSizeTemp = temp->bufferSize;
 			p = p->next;
 			kfree(temp);
-			printk("p->readPos + to_read >= p->bufferSize => readPosTemp: %d, bufferSizeTemp: %d\n", readPosTemp, bufferSizeTemp);
-			if(p != NULL)
-				printk("p = { bufferSize: %d, readPos: %d }\n", p->bufferSize, p->readPos);
-			else
-				printk("p = NULL\n");
 		}		
 	}
     printk("after while\n");
@@ -399,42 +394,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
-    // Case 2: readPos bytes not counted
-    
-    if(p==NULL){
-		printk("p = NULL!\n");
-		if(readPosTemp!=bytes_read) {
-			atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
-			printk("updating countBytes => bytes_read - readPosTemp: %d\n", bytes_read - readPosTemp);	
-		}
-		else {
-			atomic_sub(bytes_read,&countBytes[minor]);
-			printk("updating countBytes => bytes_read: %d\n", bytes_read);
-		}
-    }
-    else {
-		printk("p != NULL!\n");
-		if(p->readPos!=bytes_read) {
-				atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
-				printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
-		}
-        else {
-			atomic_sub(bytes_read,&countBytes[minor]);
-			printk("updating countBytes => bytes_read: %d\n", bytes_read);
-		}
-    }
-    /*
-    if(p==NULL){
-		printk("p = NULL!\n");
-		atomic_sub(bufferSizeTemp, &countBytes[minor]);
-		printk("updating countBytes => bufferSizeTemp: %d\n", bufferSizeTemp);	
-	}
-	else {
-		printk("p != NULL!\n");
-		atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
-		printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
-	}
-    */
+    atomic_sub(bytes_read,&countBytes[minor]);
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;

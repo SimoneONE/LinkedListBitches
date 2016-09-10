@@ -41,7 +41,7 @@ static int ll_open(struct inode *inode, struct file *filp) {
 	printk(KERN_INFO "open operation on device with minor %d is called\n", minor);
 	
 	if( minor < DEVICE_MAX_NUMBER) {
-		if( minor == NULL){
+		if( minorStreams[minor] == NULL){
 			atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
 			atomic_set(&(segmentSizes[minor]), MAX_PACKET_SIZE);
 			atomic_set(&(countBytes[minor]),0);

@@ -340,7 +340,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			to_read = p->bufferSize - p->readPos;
 		printk("to_read = %d\n",to_read);	
 		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[p->readPos])), to_read);
-		
+		tempPos += to_read;
 		// Update bytes_read
 		bytes_read += to_read;
 		

@@ -339,17 +339,26 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     printk("before while\n");
     while(p != NULL && bytes_read != size) {
 		// left to read
+		printk("size: %d, bytes_read: %d\n", (int)size, bytes_read);
 		left = size - bytes_read;
+		printk("left: %d\n", left);
 		// How much to read this round
-		if(left < p->bufferSize - p->readPos)
+		printk("p->bufferSize: %d, p->readPos: %d\n", p->bufferSize, p->readPos);
+		if(left < p->bufferSize - p->readPos) {
 			to_read = left;
-		else
+			printk("left < p->bufferSize - p->readPos => to_read: %d\n", to_read);
+		}
+		else {
 			to_read = p->bufferSize - p->readPos;
-		printk("to_read = %d\n",to_read);	
+			printk("left >= p->bufferSize - p->readPos => to_read: %d\n", to_read);
+		}
+		
 		memcpy((void*)(&(temp_buff[tempPos])), (void*)(&(p->buffer[p->readPos])), to_read);
-		tempPos += to_read;
+		
 		// Update bytes_read
 		bytes_read += to_read;
+		tempPos += to_read;
+		printk("Updating => bytes_read: %d, tempPos: %d\n", bytes_read, tempPos);
 		
 		// For sure, now bytes_read = size
 		if(p->readPos + to_read < p->bufferSize) {
@@ -358,6 +367,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			 * bytes that was previuosly used to keep the bytes that has
 			 * been already read by some user. */
 			p->readPos += to_read;
+			printk("p->readPos + to_read < p->bufferSize => p->readPos: %d\n", p->readPos);
 		}
 		else {
 			temp = p;
@@ -365,6 +375,11 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			bufferSizeTemp = temp->bufferSize;
 			p = p->next;
 			kfree(temp);
+			printk("p->readPos + to_read >= p->bufferSize => readPosTemp: %d, bufferSizeTemp: %d\n", readPosTemp, bufferSizeTemp);
+			if(p != NULL)
+				printk("p = { bufferSize: %d, readPos: %d }\n", p->bufferSize, p->readPos);
+			else
+				printk("p = NULL\n");
 		}		
 	}
     printk("after while\n");
@@ -386,16 +401,26 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     //atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
     if(p==NULL){
-	if(readPosTemp!=bufferSizeTemp)
-    		atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
-	else
-		atomic_sub(bytes_read,&countBytes[minor]);
+		printk("p = NULL!\n");
+		if(readPosTemp!=bufferSizeTemp) {
+			atomic_sub(bytes_read - readPosTemp, &countBytes[minor]);
+			printk("updating countBytes => bytes_read - readPosTemp: %d\n", bytes_read - readPosTemp);	
+		}
+		else {
+			atomic_sub(bytes_read,&countBytes[minor]);
+			printk("updating countBytes => bytes_read: %d\n", bytes_read);
+		}
     }
-    else{
-	if(p->readPos!=p->bufferSize)
-    		atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
-        else
-		atomic_sub(bytes_read,&countBytes[minor]);
+    else {
+		printk("p != NULL!\n");
+		if(p->readPos!=p->bufferSize) {
+				atomic_sub(bytes_read - p->readPos, &countBytes[minor]);
+				printk("updating countBytes => bytes_read - p->readPos: %d\n", bytes_read - p->readPos);
+		}
+        else {
+			atomic_sub(bytes_read,&countBytes[minor]);
+			printk("updating countBytes => bytes_read: %d\n", bytes_read);
+		}
     }
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));

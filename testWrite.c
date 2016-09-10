@@ -82,8 +82,9 @@ int main(int argc, char *argv[])
 	printf("Testing write and stream, non-blocking read...\n");
 	
 	int wrote = 0;
-    if ((wrote = write(filedesc, string, numBytes)) != numBytes) {
-        printf("There was an error writing to ll0; wrote: %d\n", wrote);
+    ioctl(filedesc,LL_SET_NONBLOCKING,0);
+    if ((wrote = write(filedesc, string, numBytes)) < 0) {
+        printf("There was an error writing to linked_list0; wrote: %d\n", wrote);
         return -1;
     }
     

@@ -52,7 +52,7 @@ void set_blocking_flag(int fd)
 }
 
 void set_buff_size(int fd, int argv){
-	if (ioctl(fd, SET_BUFF_SIZE, &argv) == -1){
+	if (ioctl(fd, LL_SET_MAX_SIZE, &argv) == -1){
 		perror("set buffer size \n");
 	}
 	else{
@@ -121,7 +121,7 @@ int main(int argc, char const *argv[])
 
 	/*queste parentesi sono per compilare
 	 * http://stackoverflow.com/questions/20654191/c-stack-memory-goto-and-jump-into-scope-of-identifier-with-variably-modified */ 
-	{char *file_name = "/dev/ll";
+	{char *file_name = "/dev/linked_list";
 	char new_file_name[strlen(file_name) + 1];
 	int fd;
 

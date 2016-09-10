@@ -154,7 +154,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	spin_lock(&(buffer_lock[minor]));
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
-	printk("before buffer check\n");
+	printk("before buffer check, buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);
 	while (bytes_busy >= buff_size) {
 		printk("the buffer is full\n");
 		/*release spinlock*/
@@ -173,7 +173,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		buff_size = atomic_read(&maxStreamSizes[minor]);
 		bytes_busy = atomic_read(&countBytes[minor]);
    	}
-   	printk("after buffer check\n");
+   	printk("after buffer check buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);
 	// From now exclusive access + buffer not full
 	if((buff_size-bytes_busy)<count) /* BEST EFFORT WRITE */
 		count = buff_size - bytes_busy;
@@ -205,6 +205,9 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	printk("written %d bytes\n",(int)count);
   	//atomic_set(&(countBytes[minor]),bytes_busy+count);
 	atomic_add(count,&(countBytes[minor]));
+	buff_size = atomic_read(&maxStreamSizes[minor]);
+	bytes_busy = atomic_read(&countBytes[minor]);
+	printk("buff_size = %d bytes_busy = %d\n",buff_size,bytes_busy);
 	wake_up_interruptible(&(read_queue));
 	spin_unlock(&(buffer_lock[minor]));
 	return count;
@@ -357,11 +360,11 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			temp = p;
 			readPosTemp = temp->readPos;
 			p = p->next;
-			minorStreams[minor]=p;
 			kfree(temp);
 		}		
 	}
     printk("after while\n");
+    minorStreams[minor]=p;
     // Copy the buffer to user
     res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
     

@@ -154,6 +154,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	spin_lock(&(buffer_lock[minor]));
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
+	printk("before buffer check\n");
 	while (bytes_busy >= buff_size) {
 		printk("the buffer is full\n");
 		/*release spinlock*/
@@ -172,7 +173,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		buff_size = atomic_read(&maxStreamSizes[minor]);
 		bytes_busy = atomic_read(&countBytes[minor]);
    	}
-   	
+   	printk("after buffer check\n");
 	// From now exclusive access + buffer not full
 	if((buff_size-bytes_busy)<count) /* BEST EFFORT WRITE */
 		count = buff_size - bytes_busy;
@@ -185,11 +186,13 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	p->next = NULL;
 	/*add the packet on the head of the linkedlist*/
 	if(IS_EMPTY(minor)) {
+		printk("head packet case\n");
 		minorStreams[minor] = p;
 		lastPacket[minor] = p;
 	}
 	/*add the packet on queue of the linkedlist*/
 	else {
+		printk("queue packet case\n");
 		lastPacket[minor]->next = p;
 		lastPacket[minor] = lastPacket[minor]->next;
 	}
@@ -199,7 +202,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		spin_unlock(&(buffer_lock[minor]));
 		return -EINVAL; // Error in the copy_to_user (res !=  0)
 	}
-		
+	printk("written %d bytes\n",count);
   	//atomic_set(&(countBytes[minor]),bytes_busy+count);
 	atomic_add(count,&(countBytes[minor]));
 	wake_up_interruptible(&(read_queue));

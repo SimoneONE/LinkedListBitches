@@ -166,6 +166,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	int res;
 	int buff_size;
 	int bytes_busy;
+	char *temp_buff = NULL;
 	int minor = iminor(filp->f_path.dentry->d_inode);
 	printk("write operation on device with minor %d is called\n",minor);
 	if(count < atomic_read(&minSegmentSizes[minor])){
@@ -176,6 +177,18 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		printk("error : bytes greater than the maximum packet size\n");
 		return -EINVAL;
 	}
+	
+	// Only in this case is convenient to do it
+	if (!(filp->f_flags & O_NONBLOCK)) {
+		temp_buff = kmalloc(count, GFP_KERNEL);
+		res = copy_from_user(temp_buff, buff, count);
+		if(res != 0) {
+			printk("error : failed to copy from user\n");
+			kfree(temp_buff);
+			return -EINVAL; // Error in the copy_to_user (res !=  0)
+		}
+	}
+	
 	/*acquire the lock*/
 	spin_lock(&(buffer_lock[minor]));
 	buff_size = atomic_read(&maxStreamSizes[minor]);
@@ -221,12 +234,20 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		lastPacket[minor]->next = p;
 		lastPacket[minor] = lastPacket[minor]->next;
 	}
-	res = copy_from_user(p->buffer, buff, count);
-	if(res != 0) {
+	
+	if (filp->f_flags & O_NONBLOCK)
+		res = copy_from_user(p->buffer, buff, count);
+	else {
+		memcpy(p->buffer, temp_buff, count);
+		kfree(temp_buff);
+	}
+	
+	if(res != 0 && filp->f_flags & O_NONBLOCK) {
 		printk("error : failed to copy from user\n");
 		spin_unlock(&(buffer_lock[minor]));
 		return -EINVAL; // Error in the copy_to_user (res !=  0)
 	}
+	
 	printk("written %d bytes\n",(int)count);
   	//atomic_set(&(countBytes[minor]),bytes_busy+count);
 	atomic_add(count,&(countBytes[minor]));

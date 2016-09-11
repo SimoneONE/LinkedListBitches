@@ -18,61 +18,52 @@
 int main( int argc, char *argv[] )
 {
     int numBytes = 0;
-    
     int filedesc = open("/dev/linked_list0", O_RDWR);
     
     if (filedesc < 0) {
-		printf("There was an error opening linked_list0\n");
+	printf("There was an error opening linked_list0\n");
         return -1;
     }
     
-    if( argc == 3 || argc == 4 ) {
-		if(strcmp(argv[1], "b") == 0) {
-			// Get the new buffer size from cli.
-			numBytes = atoi(argv[1]);
-			if( ioctl(filedesc, LL_SET_MAX_SIZE, &numBytes) == 0){
-				printf("Set buffer size = %d.\n", numBytes);
-				if( ioctl(filedesc, LL_GET_MAX_SIZE, &numBytes) == 0)
-					printf("New buffer size is %d.\n", numBytes);
-			}
-		}
-		else {
-			if( argc == 4 ) {
-				if( strcmp(argv[3] ,"m") == 0 ) {
-					// Get the new buffer size from cli.
-					numBytes = atoi(argv[1]);
-					if( ioctl(filedesc, LL_SET_PACK_MIN_SIZE, &numBytes) == 0){
-						printf("Set min packet size = %d.\n", numBytes);
-						if( ioctl(filedesc, LL_GET_PACK_MIN_SIZE, &numBytes) == 0)
-							printf("New min packet size is %d.\n", numBytes);
-					}
-				}
-				else {
-					numBytes = atoi(argv[1]);
-					if( ioctl(filedesc, LL_SET_PACK_MAX_SIZE, &numBytes) == 0){
-						printf("Set max packet size = %d.\n", numBytes);
-						if( ioctl(filedesc, LL_GET_PACK_MAX_SIZE, &numBytes) == 0)
-							printf("New max packet size is %d.\n", numBytes);
-					}
-				}
-			}
-			else {
-				numBytes = atoi(argv[1]);
-				if( ioctl(filedesc, LL_SET_PACK_MAX_SIZE, &numBytes) == 0){
-					printf("Set max packet size = %d.\n", numBytes);
-					if( ioctl(filedesc, LL_GET_PACK_MAX_SIZE, &numBytes) == 0)
-						printf("New max packet size is %d.\n", numBytes);
-				}
-			}
-		}
+    if(argc == 3) {
+	if(!strncmp(argv[1],"-s",2)){
+		numBytes = atoi(argv[2]);
+       		if( ioctl(filedesc, LL_SET_MAX_SIZE , &numBytes) == 0){
+                	printf("Set buffer size = %d.\n", numBytes);
+            		if( ioctl(filedesc, LL_GET_MAX_SIZE	, &numBytes) == 0)
+                		printf("New buffer size is %d.\n", numBytes);
+      		}
+	}
+	else if(!strncmp(argv[1],"-m",2)){
+		numBytes = atoi(argv[2]);
+		if( ioctl(filedesc, LL_SET_PACK_MIN_SIZE , &numBytes) == 0){
+            		printf("Set pack min size= %d.\n", numBytes);
+            		if( ioctl(filedesc, LL_GET_PACK_MIN_SIZE , &numBytes) == 0)
+                		printf("New pack min size is %d.\n", numBytes);
+       		}
+	}
+	else if(!strncmp(argv[1],"-M",2)){
+		numBytes = atoi(argv[2]);
+		if( ioctl(filedesc, LL_SET_PACK_MAX_SIZE , &numBytes) == 0){
+            		printf("Set pack max size = %d.\n", numBytes);
+            		if( ioctl(filedesc, LL_GET_PACK_MAX_SIZE , &numBytes) == 0)
+                		printf("New pack max size is %d.\n", numBytes);
+       		}
+	}
+	else {
+        	printf("Usage: %s [-s | -m | -M] , where:\n",argv[0]);
+        	printf("- s is the of the buffer.\n");
+        	printf("- min is minimum size of the packet .\n");
+        	printf("- max is the maximum size of the packet.\n");
+        	printf("Exiting.\n");
+    	}
     }
     else {
-        printf("Usage: changeSize k [m|M] n, where:\n");
-        printf("- k is the kind: \"b\" for buffer, \"p\" for packet.\n");
-        printf("- if packet, \"m\" for minimum, \"M\" maximum .\n");
-        printf("- n is the new size of the buffer (in bytes).\n");
+        printf("Usage: %s [-s] [-m] [-M] , where:\n",argv[0]);
+        printf("- s is the of the buffer.\n");
+        printf("- min is minimum size of the packet .\n");
+        printf("- max is the maximum size of the packet.\n");
         printf("Exiting.\n");
-        return 0;
     }
     
     return 0;

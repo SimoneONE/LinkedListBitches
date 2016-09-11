@@ -179,7 +179,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	}
 	// Only in this case is convenient to do it
 	if (!(filp->f_flags & O_NONBLOCK)) {
-		temp_buff = kmalloc(size, GFP_KERNEL);
+		temp_buff = kmalloc(count, GFP_KERNEL);
 		copy_from_user(temp_buff, buff, count);
 		if(res != 0) {
 			printk("error : failed to copy from user\n");
@@ -241,7 +241,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		kfree(temp_buff);
 	}
 	
-	if(res != 0) {
+	if(res != 0 && filp->f_flags & O_NONBLOCK) {
 		printk("error : failed to copy from user\n");
 		spin_unlock(&(buffer_lock[minor]));
 		return -EINVAL; // Error in the copy_to_user (res !=  0)

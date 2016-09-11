@@ -316,7 +316,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     // Case 2: readPos bytes not counted
     atomic_sub(p->bufferSize, &countBytes[minor]);
     kfree(p);
-    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
+    printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
 
@@ -552,7 +552,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     //atomic_sub(bytes_read, &countBytes[minor]);
     // Case 2: readPos bytes not counted
     atomic_sub(freed, &countBytes[minor]);
-    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
+    printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     // Copy the buffer to user

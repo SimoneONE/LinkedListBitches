@@ -30,7 +30,8 @@ Packet* minorStreams[DEVICE_MAX_NUMBER];
 Packet* lastPacket[DEVICE_MAX_NUMBER];
 // Stream/Packet dynamic sizes
 atomic_t maxStreamSizes[DEVICE_MAX_NUMBER];
-atomic_t segmentSizes[DEVICE_MAX_NUMBER];
+atomic_t maxSegmentSizes[DEVICE_MAX_NUMBER];
+atomic_t minSegmentSizes[DEVICE_MAX_NUMBER];
 atomic_t countBytes[DEVICE_MAX_NUMBER];
 atomic_t activeStreams[DEVICE_MAX_NUMBER];
 
@@ -45,7 +46,8 @@ static int ll_open(struct inode *inode, struct file *filp) {
 		if(atomic_read(&activeStreams[minor]) == 0){
 			atomic_set(&activeStreams[minor], 1);
 			atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
-			atomic_set(&(segmentSizes[minor]), MAX_PACKET_SIZE);
+			atomic_set(&(maxSegmentSizes[minor]), MAX_PACKET_SIZE);
+			atomic_set(&(minSegmentSizes[minor]), MIN_PACKET_SIZE);
 			atomic_set(&(countBytes[minor]),0);
 		}
 		return 0; /* success */
@@ -74,6 +76,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 	int res;
 	int size;	
 	int old_size;
+	
 	printk(KERN_INFO "ioctl called\n");
 	minor = iminor(filp->f_path.dentry->d_inode);
 	printk(KERN_INFO "minor is %d\n", minor);
@@ -114,21 +117,42 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				wake_up_interruptible(&write_queue);
 			printk(KERN_INFO "Maximum buffer size set to: %d", size);
         	break;
-		case LL_GET_PACK_SIZE:
+		case LL_GET_PACK_MAX_SIZE:
+        	printk("Returning current maximun packet size for ll-device %d...\n", minor);
+			size = atomic_read(&(maxSegmentSizes[minor]));
+			res = copy_to_user((int *) arg, &size , sizeof(int));
+			if(res != 0)
+				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
+			printk("Maximum packet size for ll-device %d read.\n", minor);
+        	break;
+        case LL_SET_PACK_MAX_SIZE:
+        	res = copy_from_user(&size, (int *) arg, sizeof(int));
+        	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
+        		return -EINVAL;
+        	}
+        	if( size < atomic_read(&minSegmentSizes[minor]) ){
+        		return -EINVAL;
+        	}
+        	atomic_set(&(maxSegmentSizes[minor]), size);      	
+            printk(KERN_INFO "Maximum packet size set to: %d", size);
+        	break;
+        case LL_GET_PACK_MIN_SIZE:
         	printk("Returning current packet size for ll-device %d...\n", minor);
-			size = atomic_read(&(segmentSizes[minor]));
+			size = atomic_read(&(minSegmentSizes[minor]));
 			res = copy_to_user((int *) arg, &size , sizeof(int));
 			if(res != 0)
 				return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
 			printk("Packet size for ll-device %d read.\n", minor);
         	break;
-        case LL_SET_PACK_SIZE:
+        case LL_SET_PACK_MIN_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
         	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
         		return -EINVAL;
         	}
-        	atomic_set(&(segmentSizes[minor]), size);
-        	
+        	if( size > atomic_read(&maxSegmentSizes[minor]) ){
+        		return -EINVAL;
+        	}
+        	atomic_set(&(minSegmentSizes[minor]), size);
             printk(KERN_INFO "Maximum packet size set to: %d", size);
         	break;
         default:
@@ -144,11 +168,11 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	int bytes_busy;
 	int minor = iminor(filp->f_path.dentry->d_inode);
 	printk("write operation on device with minor %d is called\n",minor);
-	if(count < MIN_LIMIT_PACKET){
+	if(count < atomic_read(&minSegmentSizes[minor])){
 		printk("error : bytes lower than the minimum packet size\n");
 		return -EINVAL;	
 	}
-	else if (count > MAX_LIMIT_PACKET){
+	else if (count > atomic_read(&maxSegmentSizes[minor])){
 		printk("error : bytes greater than the maximum packet size\n");
 		return -EINVAL;
 	}

@@ -9,6 +9,9 @@
 #define DEVICE_MAX_NUMBER 256
 #define MAX_STREAM_SIZE 64/*initial value*/
 #define MAX_PACKET_SIZE 8 /*initial value*/
+#define MIN_PACKET_SIZE 4 /*initial value*/
+
+/* Size limits */
 #define MAX_LIMIT_STREAM 1024
 #define MIN_LIMIT_STREAM 32
 #define MAX_LIMIT_PACKET 16
@@ -22,8 +25,10 @@
 #define LL_SET_NONBLOCKING 			_IO(LL_MAJOR, 3)
 #define LL_GET_MAX_SIZE				_IO(LL_MAJOR, 4)
 #define LL_SET_MAX_SIZE				_IO(LL_MAJOR, 5)
-#define LL_GET_PACK_SIZE			_IO(LL_MAJOR, 6)
-#define LL_SET_PACK_SIZE			_IO(LL_MAJOR, 7)
+#define LL_GET_PACK_MAX_SIZE		_IO(LL_MAJOR, 6)
+#define LL_SET_PACK_MAX_SIZE		_IO(LL_MAJOR, 7)
+#define LL_GET_PACK_MIN_SIZE		_IO(LL_MAJOR, 8)
+#define LL_SET_PACK_MIN_SIZE		_IO(LL_MAJOR, 9)
 
 #define LL_PACKET_MODE 1
 #define LL_STREAM_MODE 0
@@ -32,5 +37,6 @@
 typedef struct Packet {
 	char *buffer;
 	int bufferSize;
+	int readPos;
 	struct Packet *next;
 } Packet;

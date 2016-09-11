@@ -184,7 +184,6 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	p = kmalloc(sizeof(Packet), GFP_KERNEL);
   	p->buffer = kmalloc(count, GFP_KERNEL);
   	p->bufferSize = count;
-	p->readPos = 0;
 	p->next = NULL;
 	/*add the packet on the head of the linkedlist*/
 	if(IS_EMPTY(minor)) {
@@ -254,7 +253,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     p = minorStreams[minor];
     
     // Checking for previous read-streams
-    readable_bytes = p->bufferSize - p->readPos;
+    readable_bytes = p->bufferSize;
     
     // Checking for bytes to be read effectively
     if(size < readable_bytes)
@@ -265,7 +264,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     // Copying to user buffer
     /* TODO (Optimization tip): Dovremo usare anche qui un buffer 
      * temporaneo come per la read stream. */
-    res = copy_to_user(out_buffer, (char *)(&(p->buffer[p->readPos])), to_copy);
+    res = copy_to_user(out_buffer, (char *)(&(p->buffer[0])), to_copy);
     
     //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
     if(res != 0){
@@ -280,7 +279,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     // atomic_sub(readable_bytes, &countBytes[minor]);
     // Case 2: readPos bytes not counted
     atomic_sub(p->bufferSize, &countBytes[minor]);
-    
+    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
     // Free the memory
     kfree(p);
     
@@ -395,6 +394,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
     atomic_sub(bytes_read,&countBytes[minor]);
+    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;

@@ -32,6 +32,5 @@
 typedef struct Packet {
 	char *buffer;
 	int bufferSize;
-	int readPos;
 	struct Packet *next;
 } Packet;

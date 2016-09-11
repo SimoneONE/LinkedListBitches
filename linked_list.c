@@ -244,7 +244,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
 	int readable_bytes;
 	int to_copy;
 	Packet* p;
-    
+        char * temp_buff;
     printk("Read-Packet was called on ll-device %d\n", minor);
 
     // acquire spinlock
@@ -288,28 +288,27 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     // Copying to user buffer
     /* TODO (Optimization tip): Dovremo usare anche qui un buffer 
      * temporaneo come per la read stream. */
-    res = copy_to_user(out_buffer, (char *)(&(p->buffer[0])), to_copy);
-    
-    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
-    if(res != 0){
-        //as if 0 bytes were read. Exit
-        spin_unlock(&(buffer_lock[minor]));
-        return -EINVAL;
-    }
-    
+    temp_buff = kmalloc(to_copy,GFP_KERNEL);
+    memcpy((void*)(&(temp_buff[0])), (void*)(&(p->buffer[0])), to_copy);
     // Update list and counters
     minorStreams[minor] = minorStreams[minor]->next;
     // Case 1: readPos bytes already counted
     // atomic_sub(readable_bytes, &countBytes[minor]);
     // Case 2: readPos bytes not counted
     atomic_sub(p->bufferSize, &countBytes[minor]);
-    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
     // Free the memory
     kfree(p);
-    
+    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
-
     spin_unlock(&(buffer_lock[minor]));
+    res = copy_to_user(out_buffer, (char*)temp_buff, to_copy);
+    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
+    if(res != 0)
+        //as if 0 bytes were read. Exit
+        return -EINVAL;
+ 
+    // Free the memory
+    kfree(temp_buff);
     return to_copy;
 }
 
@@ -402,25 +401,20 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 	}
     printk("after while\n");
     minorStreams[minor]=p;
-    // Copy the buffer to user
-    res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
-    
-    // Free temp buff
-    kfree(temp_buff);
-    
-    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
-    if(res != 0){
-        //as if 0 bytes were read. Exit
-        spin_unlock(&(buffer_lock[minor]));
-        return -EINVAL;
-    }
-    
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
     atomic_sub(bytes_read,&countBytes[minor]);
     printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
+    // Copy the buffer to user
+    res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);
+    // Free temp buff
+    kfree(temp_buff);
+    //if res>0, it means an unexpected error happened, so we abort the operation (=not update pointers)
+    if(res != 0)
+        //as if 0 bytes were read. Exit
+        return -EINVAL;
     return bytes_read;
 }
 

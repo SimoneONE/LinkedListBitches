@@ -319,7 +319,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     atomic_sub(p->bufferSize, &countBytes[minor]);
     // Free the memory
     kfree(p);
-    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
+    printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     res = copy_to_user(out_buffer, (char*)temp_buff, to_copy);
@@ -383,14 +383,14 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		printk("size: %d, bytes_read: %d\n", (int)size, bytes_read);
 		left = size - bytes_read;
 		printk("left: %d\n", left);
-		// How much to read this round
 		printk("p->bufferSize: %d\n", p->bufferSize);
+		// How much to read this round
 		if(left < p->bufferSize) {
-			to_read = left;
+			to_read = left; //I am in the last packet
 			printk("left < p->bufferSize  => to_read: %d\n", to_read);
 		}
 		else {
-			to_read = p->bufferSize;
+			to_read = p->bufferSize; //I am not in the last packet
 			printk("left >= p->bufferSize => to_read: %d\n", to_read);
 		}
 		
@@ -400,7 +400,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		bytes_read += to_read;
 		printk("Updating => bytes_read: %d\n", bytes_read);
 		
-		// For sure, now bytes_read = size
+		// For sure, now bytes_read = size ==> the bytes read in the last packet are freed
 		if(to_read < p->bufferSize) {
 			/* TODO (Optimization tip): We could in this case reduce the
 			 * size needed for the packet, in order to free some of the 
@@ -414,7 +414,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 			kfree(p);
 			p=new_p;
 		}
-		else {
+		else { //we read all the packet. Therefore go on next
 			temp = p;
 			p = p->next;
 			kfree(temp);
@@ -425,7 +425,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // Case 1: readPos bytes already counted
     //atomic_sub(bytes_read, &countBytes[minor]);
     atomic_sub(bytes_read,&countBytes[minor]);
-    printk("countBytes updated to %d", atomic_read(&countBytes[minor]));
+    printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
     wake_up_interruptible(&write_queue);
     spin_unlock(&(buffer_lock[minor]));
     // Copy the buffer to user
@@ -450,6 +450,8 @@ static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_
 		p=p->next;
 	}
 	printk("\n");*/
+	if(count <= 0)
+		return -EINVAL;
 	if ((unsigned long)filp->private_data & O_PACKET)
         return ll_read_packet(filp, buffer, count, f_pos);
         return ll_read_stream(filp, buffer, count, f_pos);

@@ -152,7 +152,11 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if( size > atomic_read(&maxSegmentSizes[minor]) ){
         		return -EINVAL;
         	}
+        	old_size = atomic_read(&minSegmentSizes[minor]);
         	atomic_set(&(minSegmentSizes[minor]), size);
+        	
+        	if(size < old_size)
+				wake_up_interruptible(&write_queue);
             printk(KERN_INFO "Maximum packet size set to: %d", size);
         	break;
         default:
@@ -166,7 +170,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	int res;
 	int buff_size;
 	int bytes_busy;
-	char *temp_buff;
+	char *temp_buff = NULL;
 	int minor = iminor(filp->f_path.dentry->d_inode);
 	printk("write operation on device with minor %d is called\n",minor);
 	if(count < atomic_read(&minSegmentSizes[minor])){
@@ -180,7 +184,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	// Only in this case is convenient to do it
 	if (!(filp->f_flags & O_NONBLOCK)) {
 		temp_buff = kmalloc(count, GFP_KERNEL);
-		copy_from_user(temp_buff, buff, count);
+		res = copy_from_user(temp_buff, buff, count);
 		if(res != 0) {
 			printk("error : failed to copy from user\n");
 			kfree(temp_buff);
@@ -192,7 +196,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	printk("before buffer check, buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);
-	while (bytes_busy >= buff_size) {
+	while (buff_size - bytes_busy < atomic_read(&minSegmentSizes[minor])) {
 		printk("the buffer is full\n");
 		/*release spinlock*/
 		spin_unlock(&(buffer_lock[minor]));
@@ -201,7 +205,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 				return -EAGAIN; //the buffer is full therefore no data can be written
 		}
 		printk("mode is blocking therefore sleep on the write queue\n");
-		if (wait_event_interruptible(write_queue, ( atomic_read(&countBytes[minor]) < atomic_read(&maxStreamSizes[minor])) ) ){
+		if (wait_event_interruptible(write_queue, (atomic_read(&maxStreamSizes[minor]) - atomic_read(&countBytes[minor]) >= atomic_read(&minSegmentSizes[minor])) ) ){
 			printk("a signal is received.Exit\n");
 			return -ERESTARTSYS; // Woke up by a signal -> -ERESTARTSYS
 		}
@@ -237,7 +241,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	if (filp->f_flags & O_NONBLOCK)
 		res = copy_from_user(p->buffer, buff, count);
 	else {
-		res = memcpy(p->buffer, temp_buff, count);
+		memcpy(p->buffer, temp_buff, count);
 		kfree(temp_buff);
 	}
 	

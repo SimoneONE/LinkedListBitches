@@ -146,6 +146,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	break;
         case LL_SET_PACK_MIN_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
+		old_size = atomic_read(&(minSegmentSizes[minor]));
         	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
         		return -EINVAL;
         	}
@@ -153,7 +154,9 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         		return -EINVAL;
         	}
         	atomic_set(&(minSegmentSizes[minor]), size);
-            printk(KERN_INFO "Maximum packet size set to: %d", size);
+		if( size < old_size )
+			wake_up_interruptible(&write_queue);
+            printk(KERN_INFO "Minimum packet size set to: %d", size);
         	break;
         default:
             return -EINVAL;
@@ -194,7 +197,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	printk("before buffer check, buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);
-	while (bytes_busy >= buff_size) {
+	while (buff_size - bytes_busy < atomic_read(&minSegmentSizes[minor])) {
 		printk("the buffer is full\n");
 		/*release spinlock*/
 		spin_unlock(&(buffer_lock[minor]));
@@ -203,7 +206,8 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 				return -EAGAIN; //the buffer is full therefore no data can be written
 		}
 		printk("mode is blocking therefore sleep on the write queue\n");
-		if (wait_event_interruptible(write_queue, ( atomic_read(&countBytes[minor]) < atomic_read(&maxStreamSizes[minor])) ) ){
+		if (wait_event_interruptible(write_queue,
+		    (atomic_read(&maxStreamSizes[minor])-atomic_read(&countBytes[minor]) >= atomic_read(&minSegmentSizes[minor])  ) ) ){
 			printk("a signal is received.Exit\n");
 			return -ERESTARTSYS; // Woke up by a signal -> -ERESTARTSYS
 		}

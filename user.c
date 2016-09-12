@@ -272,7 +272,7 @@ int main(int argc, char* argv[]){
 					if(errno == EAGAIN)
 						printf("the buffer is empty\n");
 					if(errno == EINVAL){
-						printf("\n1)the number of bytes that you want to read are lower than 0\n");
+						printf("\n1)the number of bytes that you want to read are lower or equal than 0\n");
 						printf("3)there was an error in the copy_to_user\n");
 					}
 				}

@@ -577,6 +577,8 @@ static ssize_t ll_read(struct file *filp, char *buffer, size_t count, loff_t *f_
 		p=p->next;
 	}
 	printk("\n");*/
+	if(count <= 0)
+		return -EINVAL;
 	if ((unsigned long)filp->private_data & O_PACKET)
         return ll_read_packet(filp, buffer, count, f_pos);
         return ll_read_stream(filp, buffer, count, f_pos);

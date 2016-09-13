@@ -140,27 +140,6 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				}
 			}
         	
-
-			curr_size = atomic_read(&(minSegmentSizes[minor]));
-			leftover = size % curr_size;
-			if(leftover == 0) {
-				if(size / curr_size > MULT_LIMIT_SUP) {
-					printk(KERN_ERR "<---ERR--- New buffer size too big wrt current packet size! ... ---ERR--->\n");
-					/* MODIFICA_SPINLOCK */
-					spin_unlock(&(buffer_lock[minor]));
-					return -EINVAL;
-				}
-            }
-            else {
-				curr_size -= leftover;
-				if((size / curr_size) + 1 > MULT_LIMIT_SUP) {
-					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
-					/* MODIFICA_SPINLOCK */
-					spin_unlock(&(buffer_lock[minor]));
-					return -EINVAL;
-				}
-			}
-        	
         	old_size = atomic_read(&(maxStreamSizes[minor]));
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
@@ -240,26 +219,6 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				spin_unlock(&(buffer_lock[minor]));
         		return -EINVAL;
         	}
-            
-            curr_size = atomic_read(&(maxSegmentSizes[minor]));
-        	leftover = curr_size % size;
-        	if(leftover == 0) {
-                if(curr_size / size > MULT_LIMIT_SUP) {
-					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
-					/* MODIFICA_SPINLOCK */
-					spin_unlock(&(buffer_lock[minor]));
-					return -EINVAL;
-				}
-            }
-            else {
-				size_int = size - leftover;
-				if((curr_size / size_int) + 1 > MULT_LIMIT_SUP) {
-					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
-					/* MODIFICA_SPINLOCK */
-					spin_unlock(&(buffer_lock[minor]));
-					return -EINVAL;
-				}
-			}
         	
         	old_size = atomic_read(&minSegmentSizes[minor]);
         	atomic_set(&(minSegmentSizes[minor]), size);

@@ -61,7 +61,7 @@ int write_operation(int fd){
 	input(buffer,1025);
 	printf("string = %s - strlen(string)=%d\n",buffer,(int)strlen(buffer));
 	int wrote = write(fd, buffer, strlen(buffer));
-    	if (wrote != strlen(buffer)){
+    	if (wrote < 0){
         	//printf("There was an error writing to multimode0; wrote: %d\n", wrote);
         	return -1;
     	}
@@ -255,6 +255,7 @@ int main(int argc, char* argv[]){
 	while(choice!=4){
 		switch(choice){
 			case 1 :
+				
 				if(write_operation(filedesc)==-1){
 					printf("There was an error on write : ");
 					if(errno == EAGAIN)

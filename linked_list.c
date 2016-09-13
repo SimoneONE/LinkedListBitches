@@ -285,14 +285,6 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	int minor = iminor(filp->f_path.dentry->d_inode);
 	printk("write operation on device with minor %d is called\n",minor);
 	
-	temp_buff = kmalloc(count, GFP_KERNEL);
-	res = copy_from_user(temp_buff, buff, count);
-	if(res != 0) {
-		printk("error : failed to copy from user\n");
-		kfree(temp_buff);
-		return -EINVAL; // Error in the copy_to_user (res !=  0)
-	}
-	
 	/*MODIFICA_SPINLOCK*/
 	spin_lock(&(buffer_lock[minor]));
 	if(count < atomic_read(&minSegmentSizes[minor])){
@@ -307,7 +299,17 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 		spin_unlock(&(buffer_lock[minor]));
 		return -EINVAL;
 	}
-	
+	/*MODIFICA_SPINLOCK*/
+	temp_buff = kmalloc(count, GFP_KERNEL);
+	spin_unlock(&(buffer_lock[minor]));
+	res = copy_from_user(temp_buff, buff, count);
+	if(res != 0) {
+		printk("error : failed to copy from user\n");
+		kfree(temp_buff);
+		return -EINVAL; // Error in the copy_to_user (res !=  0)
+	}
+	spin_lock(&(buffer_lock[minor]));
+
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	printk("before buffer check, buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);

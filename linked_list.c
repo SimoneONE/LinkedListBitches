@@ -284,6 +284,8 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	char *temp_buff = NULL;
 	int minor = iminor(filp->f_path.dentry->d_inode);
 	printk("write operation on device with minor %d is called\n",minor);
+	/*MODIFICA_SPINLOCK*/
+	spin_lock(&(buffer_lock[minor]));
 	if(count < atomic_read(&minSegmentSizes[minor])){
 		printk("error : bytes lower than the minimum packet size\n");
 		return -EINVAL;	
@@ -295,15 +297,17 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	// Only in this case is convenient to do it
 	if (!(filp->f_flags & O_NONBLOCK)) {
 		temp_buff = kmalloc(count, GFP_KERNEL);
+	        /*MODIFICA_SPINLOCK*/
+		spin_unlock(&(buffer_lock[minor]));
 		res = copy_from_user(temp_buff, buff, count);
 		if(res != 0) {
 			printk("error : failed to copy from user\n");
 			kfree(temp_buff);
 			return -EINVAL; // Error in the copy_to_user (res !=  0)
 		}
+		/*MODIFICA_SPINLOCK*/
+		spin_lock(&(buffer_lock[minor]));
 	}
-	/*acquire the lock*/
-	spin_lock(&(buffer_lock[minor]));
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	printk("before buffer check, buff_size=%d bytes_busy=%d\n",buff_size,bytes_busy);

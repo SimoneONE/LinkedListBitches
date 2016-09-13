@@ -22,8 +22,6 @@ int major;
 #define IS_EMPTY(minor) (minorStreams[minor] == NULL)
 #define O_PACKET 0x80000000
 
-//DECLARE_WAIT_QUEUE_HEAD(read_queue);
-//DECLARE_WAIT_QUEUE_HEAD(write_queue);
 static wait_queue_head_t read_queue[DEVICE_MAX_NUMBER];
 static wait_queue_head_t write_queue[DEVICE_MAX_NUMBER];
 
@@ -110,21 +108,25 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 			size = atomic_read(&(maxStreamSizes[minor]));
 					res = copy_to_user((int *) arg, &size , sizeof(int));
 					if(res != 0)
-					return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
+						return -EINVAL; // if copy_from_user didn't return 0, there was a problem in the parameters.
 			printk("Buffer size for ll-device %d read.\n", minor);
         	break;
         case LL_SET_MAX_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
-        	old_size = atomic_read(&(maxStreamSizes[minor]));
+			
         	if( size < MIN_LIMIT_STREAM || size > MAX_LIMIT_STREAM ){
         		return -EINVAL;
         	}
         	
+        	/* MODIFICA_SPINLOCK */
+        	spin_lock(&(buffer_lock[minor]));
         	curr_size = atomic_read(&(maxSegmentSizes[minor]));
         	leftover = size % curr_size;
         	if(leftover == 0) {
                 if(size / curr_size < MULT_LIMIT_INF) {
 					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
             }
@@ -132,6 +134,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				curr_size -= leftover;
 				if((size / curr_size) + 1 < MULT_LIMIT_INF) {
 					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
 			}
@@ -142,6 +146,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 			if(leftover == 0) {
 				if(size / curr_size > MULT_LIMIT_SUP) {
 					printk(KERN_ERR "<---ERR--- New buffer size too big wrt current packet size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
             }
@@ -149,15 +155,20 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				curr_size -= leftover;
 				if((size / curr_size) + 1 > MULT_LIMIT_SUP) {
 					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
 			}
         	
+        	old_size = atomic_read(&(maxStreamSizes[minor]));
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
         	if(size > old_size)
 				wake_up_interruptible(&(write_queue[minor]));
 			printk(KERN_INFO "Maximum buffer size set to: %d", size);
+			/* MODIFICA_SPINLOCK */
+			spin_unlock(&(buffer_lock[minor]));
         	break;
 		case LL_GET_PACK_MAX_SIZE:
         	printk("Returning current maximun packet size for ll-device %d...\n", minor);
@@ -169,11 +180,16 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	break;
         case LL_SET_PACK_MAX_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
+        	
         	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
         		return -EINVAL;
         	}
         	
+        	/* MODIFICA_SPINLOCK */
+        	spin_lock(&(buffer_lock[minor]));
         	if( size < atomic_read(&minSegmentSizes[minor]) ){
+				/* MODIFICA_SPINLOCK */
+				spin_unlock(&(buffer_lock[minor]));
         		return -EINVAL;
         	}
             
@@ -182,6 +198,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if(leftover == 0) {
                 if(curr_size / size < MULT_LIMIT_INF) {
 					printk(KERN_ERR "<---ERR--- New Packet size too big wrt current buffer size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
             }
@@ -189,12 +207,16 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				size_int = size - leftover;
 				if((curr_size / size_int) + 1 < MULT_LIMIT_INF) {
 					printk(KERN_ERR "<---ERR--- New Packet size too big wrt current buffer size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
 			}
         	
         	atomic_set(&(maxSegmentSizes[minor]), size);      	
             printk(KERN_INFO "Maximum packet size set to: %d", size);
+            /* MODIFICA_SPINLOCK */
+			spin_unlock(&(buffer_lock[minor]));
         	break;
         case LL_GET_PACK_MIN_SIZE:
         	printk("Returning current packet size for ll-device %d...\n", minor);
@@ -206,10 +228,16 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	break;
         case LL_SET_PACK_MIN_SIZE:
         	res = copy_from_user(&size, (int *) arg, sizeof(int));
+        	
         	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
         		return -EINVAL;
         	}
+        	
+        	/* MODIFICA_SPINLOCK */
+        	spin_lock(&(buffer_lock[minor]));
         	if( size > atomic_read(&maxSegmentSizes[minor]) ){
+				/* MODIFICA_SPINLOCK */
+				spin_unlock(&(buffer_lock[minor]));
         		return -EINVAL;
         	}
             
@@ -218,6 +246,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if(leftover == 0) {
                 if(curr_size / size > MULT_LIMIT_SUP) {
 					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
             }
@@ -225,6 +255,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 				size_int = size - leftover;
 				if((curr_size / size_int) + 1 > MULT_LIMIT_SUP) {
 					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
+					/* MODIFICA_SPINLOCK */
+					spin_unlock(&(buffer_lock[minor]));
 					return -EINVAL;
 				}
 			}
@@ -235,6 +267,8 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if(size < old_size)
 				wake_up_interruptible(&(write_queue[minor]));
             printk(KERN_INFO "Maximum packet size set to: %d", size);
+            /* MODIFICA_SPINLOCK */
+			spin_unlock(&(buffer_lock[minor]));
         	break;
         default:
             return -EINVAL;

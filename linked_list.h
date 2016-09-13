@@ -18,7 +18,7 @@
 #define MIN_LIMIT_PACKET 4
 
 /* Multiple limits */
-#define MULT_LIMIT_INF 8
+#define MULT_LIMIT_INF 4
 #define MULT_LIMIT_SUP 32
 
 /* IOCTL related macros */

@@ -17,6 +17,10 @@
 #define MAX_LIMIT_PACKET 16
 #define MIN_LIMIT_PACKET 4
 
+/* Multiple limits */
+#define MULT_LIMIT_INF 8
+#define MULT_LIMIT_SUP 32
+
 /* IOCTL related macros */
 #define LL_MAJOR 					250
 #define LL_SET_PACKET_MODE 			_IO(LL_MAJOR, 0)

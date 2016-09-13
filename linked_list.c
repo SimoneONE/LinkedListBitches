@@ -81,6 +81,9 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 	int res;
 	int size;	
 	int old_size;
+	int curr_size;
+	int leftover;
+	int size_int;
 	
 	printk(KERN_INFO "ioctl called\n");
 	minor = iminor(filp->f_path.dentry->d_inode);
@@ -116,6 +119,40 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if( size < MIN_LIMIT_STREAM || size > MAX_LIMIT_STREAM ){
         		return -EINVAL;
         	}
+        	
+        	curr_size = atomic_read(&(maxSegmentSizes[minor]));
+        	leftover = size % curr_size;
+        	if(leftover == 0) {
+                if(size / curr_size < MULT_LIMIT_INF) {
+					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+            }
+            else {
+				curr_size -= leftover;
+				if((size / curr_size) + 1 < MULT_LIMIT_INF) {
+					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+			}
+        	
+
+			curr_size = atomic_read(&(minSegmentSizes[minor]));
+			leftover = size % curr_size;
+			if(leftover == 0) {
+				if(size / curr_size > MULT_LIMIT_SUP) {
+					printk(KERN_ERR "<---ERR--- New buffer size too big wrt current packet size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+            }
+            else {
+				curr_size -= leftover;
+				if((size / curr_size) + 1 > MULT_LIMIT_SUP) {
+					printk(KERN_ERR "<---ERR--- New buffer size too small wrt current packet size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+			}
+        	
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
         	if(size > old_size)
@@ -135,9 +172,27 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if( size < MIN_LIMIT_PACKET || size > MAX_LIMIT_PACKET ){
         		return -EINVAL;
         	}
+        	
         	if( size < atomic_read(&minSegmentSizes[minor]) ){
         		return -EINVAL;
         	}
+            
+            curr_size = atomic_read(&(maxSegmentSizes[minor]));
+        	leftover = curr_size % size;
+        	if(leftover == 0) {
+                if(curr_size / size < MULT_LIMIT_INF) {
+					printk(KERN_ERR "<---ERR--- New Packet size too big wrt current buffer size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+            }
+            else {
+				size_int = size - leftover;
+				if((curr_size / size_int) + 1 < MULT_LIMIT_INF) {
+					printk(KERN_ERR "<---ERR--- New Packet size too big wrt current buffer size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+			}
+        	
         	atomic_set(&(maxSegmentSizes[minor]), size);      	
             printk(KERN_INFO "Maximum packet size set to: %d", size);
         	break;
@@ -157,6 +212,23 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	if( size > atomic_read(&maxSegmentSizes[minor]) ){
         		return -EINVAL;
         	}
+            
+            curr_size = atomic_read(&(maxSegmentSizes[minor]));
+        	leftover = curr_size % size;
+        	if(leftover == 0) {
+                if(curr_size / size > MULT_LIMIT_SUP) {
+					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+            }
+            else {
+				size_int = size - leftover;
+				if((curr_size / size_int) + 1 > MULT_LIMIT_SUP) {
+					printk(KERN_ERR "<---ERR--- New Packet size too small wrt current buffer size! ... ---ERR--->\n");
+					return -EINVAL;
+				}
+			}
+        	
         	old_size = atomic_read(&minSegmentSizes[minor]);
         	atomic_set(&(minSegmentSizes[minor]), size);
         	

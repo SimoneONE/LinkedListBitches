@@ -19,7 +19,6 @@
 
 /* Multiple limits */
 #define MULT_LIMIT_INF 4
-#define MULT_LIMIT_SUP 32
 
 /* IOCTL related macros */
 #define LL_MAJOR 					250

@@ -22,8 +22,10 @@ int major;
 #define IS_EMPTY(minor) (minorStreams[minor] == NULL)
 #define O_PACKET 0x80000000
 
-DECLARE_WAIT_QUEUE_HEAD(read_queue);
-DECLARE_WAIT_QUEUE_HEAD(write_queue);
+//DECLARE_WAIT_QUEUE_HEAD(read_queue);
+//DECLARE_WAIT_QUEUE_HEAD(write_queue);
+static wait_queue_head_t read_queue[DEVICE_MAX_NUMBER];
+static wait_queue_head_t write_queue[DEVICE_MAX_NUMBER];
 
 spinlock_t buffer_lock[DEVICE_MAX_NUMBER];
 Packet* minorStreams[DEVICE_MAX_NUMBER];
@@ -44,6 +46,9 @@ static int ll_open(struct inode *inode, struct file *filp) {
 	
 	if( minor < DEVICE_MAX_NUMBER) {
 		if(atomic_read(&activeStreams[minor]) == 0){
+			spin_lock_init(&(buffer_lock[minor]));
+			init_waitqueue_head(&(read_queue[minor]));
+			init_waitqueue_head(&(write_queue[minor]));
 			atomic_set(&activeStreams[minor], 1);
 			atomic_set(&(maxStreamSizes[minor]), MAX_STREAM_SIZE);
 			atomic_set(&(maxSegmentSizes[minor]), MAX_PACKET_SIZE);
@@ -114,7 +119,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	atomic_set(&(maxStreamSizes[minor]), size);
         	
         	if(size > old_size)
-				wake_up_interruptible(&write_queue);
+				wake_up_interruptible(&(write_queue[minor]));
 			printk(KERN_INFO "Maximum buffer size set to: %d", size);
         	break;
 		case LL_GET_PACK_MAX_SIZE:
@@ -156,7 +161,7 @@ static long ll_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
         	atomic_set(&(minSegmentSizes[minor]), size);
         	
         	if(size < old_size)
-				wake_up_interruptible(&write_queue);
+				wake_up_interruptible(&(write_queue[minor]));
             printk(KERN_INFO "Maximum packet size set to: %d", size);
         	break;
         default:
@@ -205,7 +210,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 				return -EAGAIN; //the buffer is full therefore no data can be written
 		}
 		printk("mode is blocking therefore sleep on the write queue\n");
-		if (wait_event_interruptible(write_queue, (atomic_read(&maxStreamSizes[minor]) - atomic_read(&countBytes[minor]) >= atomic_read(&minSegmentSizes[minor])) ) ){
+		if (wait_event_interruptible(write_queue[minor], (atomic_read(&maxStreamSizes[minor]) - atomic_read(&countBytes[minor]) >= atomic_read(&minSegmentSizes[minor])) ) ){
 			printk("a signal is received.Exit\n");
 			return -ERESTARTSYS; // Woke up by a signal -> -ERESTARTSYS
 		}
@@ -256,7 +261,7 @@ static ssize_t ll_write(struct file *filp, const char *buff, size_t count, loff_
 	buff_size = atomic_read(&maxStreamSizes[minor]);
 	bytes_busy = atomic_read(&countBytes[minor]);
 	printk("buff_size = %d bytes_busy = %d\n",buff_size,bytes_busy);
-	wake_up_interruptible(&(read_queue));
+	wake_up_interruptible(&(read_queue[minor]));
 	spin_unlock(&(buffer_lock[minor]));
 	return count;
 }
@@ -287,7 +292,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
         }
 
         printk("Sleeping on the read queue\n");
-        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+        if(wait_event_interruptible(read_queue[minor], !IS_EMPTY(minor)))
             return -ERESTARTSYS;
             
         // otherwise loop, but first re-acquire spinlock
@@ -321,7 +326,7 @@ static ssize_t ll_read_packet(struct file *filp, char *out_buffer, size_t size, 
     atomic_sub(p->bufferSize, &countBytes[minor]);
     kfree(p);
     printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
-    wake_up_interruptible(&write_queue);
+    wake_up_interruptible(&(write_queue[minor]));
     spin_unlock(&(buffer_lock[minor]));
 
     res = copy_to_user(out_buffer, (char *)temp_buff, to_copy);
@@ -369,7 +374,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
         }
 
         printk("Sleeping on the read queue\n");
-        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+        if(wait_event_interruptible(read_queue[minor], !IS_EMPTY(minor)))
             return -ERESTARTSYS;
             
         // otherwise loop, but first re-acquire spinlock
@@ -471,7 +476,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
 		}
     }
 
-    wake_up_interruptible(&write_queue);
+    wake_up_interruptible(&(write_queue[minor]));
     spin_unlock(&(buffer_lock[minor]));
     return bytes_read;
 }
@@ -508,7 +513,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
         }
 
         printk("Sleeping on the read queue\n");
-        if(wait_event_interruptible(read_queue, !IS_EMPTY(minor)))
+        if(wait_event_interruptible(read_queue[minor], !IS_EMPTY(minor)))
             return -ERESTARTSYS;
             
         // otherwise loop, but first re-acquire spinlock
@@ -557,7 +562,7 @@ static ssize_t ll_read_stream(struct file *filp, char *out_buffer, size_t size, 
     // Case 2: readPos bytes not counted
     atomic_sub(freed, &countBytes[minor]);
     printk("countBytes updated to %d\n", atomic_read(&countBytes[minor]));
-    wake_up_interruptible(&write_queue);
+    wake_up_interruptible(&(write_queue[minor]));
     spin_unlock(&(buffer_lock[minor]));
     // Copy the buffer to user
     res = copy_to_user(out_buffer, (char *)(temp_buff), bytes_read);

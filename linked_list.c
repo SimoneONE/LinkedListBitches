@@ -45,6 +45,7 @@ static int ll_open(struct inode *inode, struct file *filp) {
 	
 	if( minor < DEVICE_MAX_NUMBER) {
 		if(atomic_read(&activeStreams[minor]) == 0){
+			spin_lock_init(&(buffer_lock[minor]));
 			init_waitqueue_head(&(read_queue[minor]));
 			init_waitqueue_head(&(write_queue[minor]));
 			atomic_set(&activeStreams[minor], 1);
